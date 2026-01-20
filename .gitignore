@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+.venv/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs and runtime artifacts
+*.log
+state/
+
+# Security
+*.pem
+*.key
+
+# Misc
+.DS_Store
