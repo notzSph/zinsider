@@ -4,7 +4,7 @@ import time
 import yfinance as yf
 
 
-def download_daily_bars(
+def download_bars(
     tickers: list[str],
     period: str,
     interval: str,
@@ -12,7 +12,9 @@ def download_daily_bars(
     retry_backoff_seconds: float,
 ):
     """
-    Download daily OHLCV bars for multiple tickers using yfinance.
+    Generic yfinance downloader. Use:
+      - period=14d interval=60m for ETH-session aggregation
+      - (avoid 1d for FX if you care about 18:00->17:00 NY semantics)
     """
     if not tickers:
         raise ValueError("tickers is empty")

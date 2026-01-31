@@ -1,91 +1,136 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from typing import Dict, List, Tuple
+
+import pandas as pd
 
 InsideDayDetail = Tuple[str, str, float, float, float, float]
+# (prev_session_end_date, curr_session_end_date, prev_high, prev_low, curr_high, curr_low)
 
 
-def extract_last_two_daily_bars(high_s, low_s) -> Optional[InsideDayDetail]:
+def _to_utc_index(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    # yfinance can return tz-naive or tz-aware indexes depending on symbol
+    if idx.tz is None:
+        return idx.tz_localize("UTC")
+    return idx.tz_convert("UTC")
+
+
+def _build_eth_sessions_18_17(
+    o: pd.Series,
+    h: pd.Series,
+    l: pd.Series,
+    c: pd.Series,
+    ny_timezone: str,
+) -> pd.DataFrame:
     """
-    Extract last two daily bars (high/low) from two aligned series.
+    Build ETH session candles using:
+      - session open: 18:00 NY
+      - session close: 17:00 NY next day
+      - exclude maintenance: 17:00–18:00 NY
+
+    We label each session by its session close date (the date of the 17:00 NY close).
     """
-    high_s = high_s.dropna()
-    low_s = low_s.dropna()
+    tz = ZoneInfo(ny_timezone)
 
-    if len(high_s) < 2 or len(low_s) < 2:
-        return None
+    idx_ny = _to_utc_index(o.index).tz_convert(tz)
+    df = pd.DataFrame(
+        {"Open": o.values, "High": h.values, "Low": l.values, "Close": c.values},
+        index=idx_ny,
+    ).dropna()
 
-    idx = high_s.index.intersection(low_s.index)
-    if len(idx) < 2:
-        return None
+    if df.empty:
+        return df
 
-    high_s = high_s.loc[idx]
-    low_s = low_s.loc[idx]
+    # Drop maintenance hour 17:00–17:59 NY
+    df = df[df.index.hour != 17]
+    if df.empty:
+        return df
 
-    prev_i, curr_i = -2, -1
-    prev_date = idx[prev_i].strftime("%Y-%m-%d")
-    curr_date = idx[curr_i].strftime("%Y-%m-%d")
+    # Session close date assignment:
+    # - Bars at 18:00..23:59 belong to session closing the NEXT calendar day at 17:00
+    # - Bars at 00:00..16:59 belong to session closing SAME calendar day at 17:00
+    end_dates = pd.Series(df.index.date, index=df.index)
+    evening = df.index.hour >= 18
+    end_dates.loc[evening] = (df.index[evening] + pd.Timedelta(days=1)).date
+    df["session_end_date"] = end_dates.values
 
-    return (
-        prev_date,
-        curr_date,
-        float(high_s.iloc[prev_i]),
-        float(low_s.iloc[prev_i]),
-        float(high_s.iloc[curr_i]),
-        float(low_s.iloc[curr_i]),
+    g = df.groupby("session_end_date", sort=True)
+
+    sessions = pd.DataFrame(
+        {
+            "Open": g["Open"].first(),
+            "High": g["High"].max(),
+            "Low": g["Low"].min(),
+            "Close": g["Close"].last(),
+        }
     )
 
+    # Build a concrete close timestamp for filtering completed sessions
+    sessions.index = pd.to_datetime(sessions.index).tz_localize(tz)
+    sessions["session_end"] = sessions.index.normalize() + pd.Timedelta(hours=17)
 
-def is_inside_day(prev_high: float, prev_low: float, curr_high: float, curr_low: float) -> bool:
+    # Keep only completed sessions (ended at/before now)
+    now_ny = datetime.now(tz)
+    sessions = sessions[sessions["session_end"] <= now_ny]
+
+    return sessions
+
+
+def detect_inside_days_eth(df_hourly, tickers: List[str], ny_timezone: str):
     """
-    True if current day's range is fully inside the previous day's range.
-    """
-    return (curr_high <= prev_high) and (curr_low >= prev_low)
-
-
-def detect_inside_days(df, tickers: List[str]):
-    """
-    Evaluate inside-day condition for each ticker.
-
-    Returns:
-      - hits: list of tickers with inside day
-      - failures: list of tickers that could not be evaluated
-      - details: dict[ticker] -> (prev_date, curr_date, prev_high, prev_low, curr_high, curr_low)
+    Inside day computed on last two completed ETH sessions (18:00->17:00 NY).
     """
     hits: List[str] = []
     failures: List[str] = []
     details: Dict[str, InsideDayDetail] = {}
 
-    if df is None or df.empty:
+    if df_hourly is None or df_hourly.empty:
         return hits, tickers[:], details
 
-    multi = getattr(df.columns, "nlevels", 1) > 1
+    multi = getattr(df_hourly.columns, "nlevels", 1) > 1
 
     for t in tickers:
         try:
             if multi:
-                if "High" not in df.columns.levels[0] or "Low" not in df.columns.levels[0]:
-                    failures.append(t)
-                    continue
-                if t not in df["High"].columns or t not in df["Low"].columns:
-                    failures.append(t)
-                    continue
-
-                high_s = df["High"][t]
-                low_s = df["Low"][t]
+                for col in ("Open", "High", "Low", "Close"):
+                    if col not in df_hourly.columns.levels[0] or t not in df_hourly[col].columns:
+                        raise KeyError(f"missing {col} for {t}")
+                o = df_hourly["Open"][t].dropna()
+                h = df_hourly["High"][t].dropna()
+                l = df_hourly["Low"][t].dropna()
+                c = df_hourly["Close"][t].dropna()
             else:
-                high_s = df["High"]
-                low_s = df["Low"]
+                o = df_hourly["Open"].dropna()
+                h = df_hourly["High"].dropna()
+                l = df_hourly["Low"].dropna()
+                c = df_hourly["Close"].dropna()
 
-            extracted = extract_last_two_daily_bars(high_s, low_s)
-            if not extracted:
+            idx = o.index.intersection(h.index).intersection(l.index).intersection(c.index)
+            if len(idx) < 30:
                 failures.append(t)
                 continue
 
-            details[t] = extracted
-            _, _, ph, pl, ch, cl = extracted
+            o, h, l, c = o.loc[idx], h.loc[idx], l.loc[idx], c.loc[idx]
+            sessions = _build_eth_sessions_18_17(o, h, l, c, ny_timezone)
 
-            if is_inside_day(ph, pl, ch, cl):
+            if len(sessions) < 2:
+                failures.append(t)
+                continue
+
+            prev = sessions.iloc[-2]
+            curr = sessions.iloc[-1]
+
+            prev_end = prev["session_end"].strftime("%Y-%m-%d")
+            curr_end = curr["session_end"].strftime("%Y-%m-%d")
+
+            ph, pl = float(prev["High"]), float(prev["Low"])
+            ch, cl = float(curr["High"]), float(curr["Low"])
+
+            details[t] = (prev_end, curr_end, ph, pl, ch, cl)
+
+            if (ch <= ph) and (cl >= pl):
                 hits.append(t)
 
         except Exception:
