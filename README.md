@@ -2,9 +2,9 @@
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Build Status](https://img.shields.io/badge/build-passing-green)
-[![Python](https://img.shields.io/badge/Python-3.12%2B-informational)]
-[![Docker](https://img.shields.io/badge/Docker-required-informational)]
-[![License: MIT](https://img.shields.io/badge/License-MIT--X-lightgrey)]
+![Python](https://img.shields.io/badge/Python-3.12%2B-informational)
+![Docker](https://img.shields.io/badge/Docker-required-informational)
+![License: MIT](https://img.shields.io/badge/License-MIT--X-lightgrey)
 
 Daily **inside day** scanner for **FX and futures** (Yahoo Finance via `yfinance`) that posts a single summary message to **Discord**.
 

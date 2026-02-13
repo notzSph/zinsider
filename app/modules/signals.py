@@ -11,7 +11,6 @@ InsideDayDetail = Tuple[str, str, float, float, float, float]
 
 
 def _to_utc_index(idx: pd.DatetimeIndex) -> pd.DatetimeIndex:
-    # yfinance can return tz-naive or tz-aware indexes depending on symbol
     if idx.tz is None:
         return idx.tz_localize("UTC")
     return idx.tz_convert("UTC")
@@ -24,14 +23,6 @@ def _build_eth_sessions_18_17(
     c: pd.Series,
     ny_timezone: str,
 ) -> pd.DataFrame:
-    """
-    Build ETH session candles using:
-      - session open: 18:00 NY
-      - session close: 17:00 NY next day
-      - exclude maintenance: 17:00–18:00 NY
-
-    We label each session by its session close date (the date of the 17:00 NY close).
-    """
     tz = ZoneInfo(ny_timezone)
 
     idx_ny = _to_utc_index(o.index).tz_convert(tz)
@@ -48,9 +39,6 @@ def _build_eth_sessions_18_17(
     if df.empty:
         return df
 
-    # Session close date assignment:
-    # - Bars at 18:00..23:59 belong to session closing the NEXT calendar day at 17:00
-    # - Bars at 00:00..16:59 belong to session closing SAME calendar day at 17:00
     end_dates = pd.Series(df.index.date, index=df.index)
     evening = df.index.hour >= 18
     end_dates.loc[evening] = (df.index[evening] + pd.Timedelta(days=1)).date
@@ -67,11 +55,9 @@ def _build_eth_sessions_18_17(
         }
     )
 
-    # Build a concrete close timestamp for filtering completed sessions
     sessions.index = pd.to_datetime(sessions.index).tz_localize(tz)
     sessions["session_end"] = sessions.index.normalize() + pd.Timedelta(hours=17)
 
-    # Keep only completed sessions (ended at/before now)
     now_ny = datetime.now(tz)
     sessions = sessions[sessions["session_end"] <= now_ny]
 
@@ -79,9 +65,6 @@ def _build_eth_sessions_18_17(
 
 
 def detect_inside_days_eth(df_hourly, tickers: List[str], ny_timezone: str):
-    """
-    Inside day computed on last two completed ETH sessions (18:00->17:00 NY).
-    """
     hits: List[str] = []
     failures: List[str] = []
     details: Dict[str, InsideDayDetail] = {}
@@ -137,3 +120,65 @@ def detect_inside_days_eth(df_hourly, tickers: List[str], ny_timezone: str):
             failures.append(t)
 
     return hits, failures, details
+
+
+# -----------------------------
+# Candle builders for generic inside day/week
+# -----------------------------
+
+def _extract_ohlc(df_hourly: pd.DataFrame, t: str):
+    multi = getattr(df_hourly.columns, "nlevels", 1) > 1
+    if multi:
+        for col in ("Open", "High", "Low", "Close"):
+            if col not in df_hourly.columns.levels[0] or t not in df_hourly[col].columns:
+                raise KeyError(f"missing {col} for {t}")
+        o = df_hourly["Open"][t].dropna()
+        h = df_hourly["High"][t].dropna()
+        l = df_hourly["Low"][t].dropna()
+        c = df_hourly["Close"][t].dropna()
+    else:
+        o = df_hourly["Open"].dropna()
+        h = df_hourly["High"].dropna()
+        l = df_hourly["Low"].dropna()
+        c = df_hourly["Close"].dropna()
+
+    idx = o.index.intersection(h.index).intersection(l.index).intersection(c.index)
+    return o.loc[idx], h.loc[idx], l.loc[idx], c.loc[idx]
+
+
+def candles_day_eth(df_hourly: pd.DataFrame, t: str, ny_timezone: str) -> pd.DataFrame:
+    o, h, l, c = _extract_ohlc(df_hourly, t)
+    sessions = _build_eth_sessions_18_17(o, h, l, c, ny_timezone)
+    if sessions is None or sessions.empty:
+        return pd.DataFrame()
+
+    candles = sessions[["Open", "High", "Low", "Close"]].copy()
+    candles.index = sessions["session_end"].dt.strftime("%Y-%m-%d")
+    return candles
+
+
+def candles_week_from_day(df_hourly: pd.DataFrame, t: str, ny_timezone: str, min_days: int = 3) -> pd.DataFrame:
+    daily = candles_day_eth(df_hourly, t, ny_timezone)
+    if daily is None or daily.empty or len(daily) < 5:
+        return pd.DataFrame()
+
+    idx = pd.to_datetime(daily.index)
+    d = daily.copy()
+    d["_d"] = idx
+
+    wk = d["_d"].dt.to_period("W-FRI")
+    g = d.groupby(wk, sort=True)
+
+    weekly = pd.DataFrame(
+        {
+            "Open": g["Open"].first(),
+            "High": g["High"].max(),
+            "Low": g["Low"].min(),
+            "Close": g["Close"].last(),
+            "count": g["Close"].count(),
+        }
+    )
+
+    weekly = weekly[weekly["count"] >= min_days].drop(columns=["count"])
+    weekly.index = [str(p.end_time.date()) for p in weekly.index]
+    return weekly

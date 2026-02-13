@@ -1,26 +1,21 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Literal
 
+Direction = Literal["bull", "bear"]
 
-RoundedDetail = Tuple[str, str, str, float, float, float, float]
-# (d1_date, d2_date, d3_date, d1_high, d1_low, d2_close, d3_low)
+RoundedDetail = Tuple[Direction, str, str, str, float, float, float, float]
+# (direction, d1_date, d2_date, d3_date, d1_high, d1_low, d2_close, d3_level)
+# bull: d3_level = d3_low  (must be > d1_high)
+# bear: d3_level = d3_high (must be < d1_low)
 
 
 def is_hammer(open_: float, high: float, low: float, close: float) -> bool:
-    """
-    Hammer heuristic (stable defaults):
-      - small body (<= 30% of range)
-      - long lower wick (>= 2x body)
-      - upper wick not dominant (<= 1x body)
-      - body in top 40% of range
-    """
     rng = high - low
     if rng <= 0:
         return False
 
     body = abs(close - open_)
-    # avoid divide-by-zero while keeping doji-ish bodies "small"
     body = max(body, rng * 0.01)
 
     upper = high - max(open_, close)
@@ -40,16 +35,34 @@ def is_hammer(open_: float, high: float, low: float, close: float) -> bool:
     return True
 
 
+def is_shooting_star(open_: float, high: float, low: float, close: float) -> bool:
+    rng = high - low
+    if rng <= 0:
+        return False
+
+    body = abs(close - open_)
+    body = max(body, rng * 0.01)
+
+    upper = high - max(open_, close)
+    lower = min(open_, close) - low
+
+    if (body / rng) > 0.30:
+        return False
+    if upper < 2.0 * body:
+        return False
+    if lower > 1.0 * body:
+        return False
+
+    body_bot = min(open_, close)
+    if body_bot > (low + 0.40 * rng):
+        return False
+
+    return True
+
+
 def _extract_last_three(
     o_s, h_s, l_s, c_s
-) -> Optional[Tuple[str, str, str, float, float, float, float, float, float, float, float, float]]:
-    """
-    Returns:
-      d1_date, d2_date, d3_date,
-      d1_o, d1_h, d1_l, d1_c,
-      d2_o, d2_h, d2_l, d2_c,
-      d3_o, d3_h, d3_l, d3_c
-    """
+) -> Optional[Tuple[str, str, str, float, float, float, float, float, float, float, float, float, float, float, float]]:
     o_s = o_s.dropna()
     h_s = h_s.dropna()
     l_s = l_s.dropna()
@@ -78,18 +91,6 @@ def _extract_last_three(
 
 
 def detect_rounded_retests(df, tickers: List[str]):
-    """
-    Rounded retest (bullish) per your 3-day spec:
-
-    1) Day 1 (D-2) is hammer
-    2) Day 2 (D-1) bullish engulf condition: Close > High of Day 1
-    3) Day 3 (D0) low > High of Day 1 (no touch)
-
-    Returns:
-      hits: tickers meeting conditions
-      failures: tickers we couldn't evaluate
-      details: dict[ticker] -> RoundedDetail
-    """
     hits: List[str] = []
     failures: List[str] = []
     details: Dict[str, RoundedDetail] = {}
@@ -129,23 +130,22 @@ def detect_rounded_retests(df, tickers: List[str]):
                 d1_date, d2_date, d3_date,
                 d1_o, d1_h, d1_l, d1_c,
                 _d2_o, _d2_h, _d2_l, d2_c,
-                _d3_o, _d3_h, d3_l, _d3_c,
+                _d3_o, d3_h, d3_l, _d3_c,
             ) = extracted
 
-            # 1) hammer
-            if not is_hammer(d1_o, d1_h, d1_l, d1_c):
-                continue
+            # Bullish
+            if is_hammer(d1_o, d1_h, d1_l, d1_c):
+                if (d2_c > d1_h) and (d3_l > d1_h):
+                    hits.append(t)
+                    details[t] = ("bull", d1_date, d2_date, d3_date, d1_h, d1_l, d2_c, d3_l)
+                    continue
 
-            # 2) bullish engulf condition (as defined): close above hammer high
-            if not (d2_c > d1_h):
-                continue
-
-            # 3) "no touch": today's low strictly above hammer high
-            if not (d3_l > d1_h):
-                continue
-
-            hits.append(t)
-            details[t] = (d1_date, d2_date, d3_date, d1_h, d1_l, d2_c, d3_l)
+            # Bearish
+            if is_shooting_star(d1_o, d1_h, d1_l, d1_c):
+                if (d2_c < d1_l) and (d3_h < d1_l):
+                    hits.append(t)
+                    details[t] = ("bear", d1_date, d2_date, d3_date, d1_h, d1_l, d2_c, d3_h)
+                    continue
 
         except Exception:
             failures.append(t)
