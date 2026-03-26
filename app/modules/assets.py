@@ -33,6 +33,24 @@ ASSETS = [
 
 def get_assets() -> list[str]:
     """
-    Return the list of Yahoo tickers to monitor.
+    Return the list of Yahoo-style tickers to monitor.
     """
     return ASSETS
+
+
+def is_fx_ticker(ticker: str) -> bool:
+    """
+    FX tickers are expected in Yahoo style, e.g. EURUSD=X
+    """
+    t = ticker.strip().upper()
+    return t.endswith("=X") and len(t[:-2]) == 6 and t[:-2].isalpha()
+
+
+def split_assets(tickers: list[str]) -> tuple[list[str], list[str]]:
+    """
+    Returns:
+        fx_tickers, other_tickers
+    """
+    fx = [t for t in tickers if is_fx_ticker(t)]
+    other = [t for t in tickers if not is_fx_ticker(t)]
+    return fx, other

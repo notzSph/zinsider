@@ -182,3 +182,41 @@ def candles_week_from_day(df_hourly: pd.DataFrame, t: str, ny_timezone: str, min
     weekly = weekly[weekly["count"] >= min_days].drop(columns=["count"])
     weekly.index = [str(p.end_time.date()) for p in weekly.index]
     return weekly
+
+
+def candles_week_from_day_direct(day_df: pd.DataFrame, min_days: int = 3) -> pd.DataFrame:
+    """
+    Build weekly candles from an already-normalized daily OHLC DataFrame.
+
+    Expected input:
+        index = daily bar date/datetime
+        columns = Open, High, Low, Close
+    """
+    if day_df is None or day_df.empty:
+        return pd.DataFrame()
+
+    d = day_df.copy()
+    d = d[["Open", "High", "Low", "Close"]].dropna()
+    if d.empty:
+        return pd.DataFrame()
+
+    d.index = pd.to_datetime(d.index)
+    d = d.sort_index()
+    d["_d"] = d.index
+
+    wk = d["_d"].dt.to_period("W-FRI")
+    g = d.groupby(wk, sort=True)
+
+    weekly = pd.DataFrame(
+        {
+            "Open": g["Open"].first(),
+            "High": g["High"].max(),
+            "Low": g["Low"].min(),
+            "Close": g["Close"].last(),
+            "count": g["Close"].count(),
+        }
+    )
+
+    weekly = weekly[weekly["count"] >= min_days].drop(columns=["count"])
+    weekly.index = [str(p.end_time.date()) for p in weekly.index]
+    return weekly

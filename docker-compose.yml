@@ -5,6 +5,10 @@ services:
     env_file:
       - .env
     environment:
+      TD_OUTPUTSIZE: ${TD_OUTPUTSIZE:-20}
+      TD_MAX_RETRIES: ${TD_MAX_RETRIES:-3}
+      TD_RETRY_BACKOFF_SECONDS: ${TD_RETRY_BACKOFF_SECONDS:-2.0}
+      TD_BASE_URL: ${TD_BASE_URL:-https://api.twelvedata.com}
       STATE_DIR: /app/state
     volumes:
       - state:/app/state

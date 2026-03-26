@@ -3,14 +3,15 @@ from __future__ import annotations
 from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.modules.config import get_settings
 from app.modules.assets import get_assets
-from app.modules.market import download_bars
+from app.modules.config import get_settings
 from app.modules.inside import detect_inside, format_inside
-from app.modules.signals import candles_day_eth, candles_week_from_day
+from app.modules.market import download_bars
 from app.modules.retest import detect_rounded_retests
+from app.modules.signals import candles_week_from_day_direct
 from app.modules.state import get_state, save_state
 from app.modules.webhooks import send_discord_message
+from app.modules.zebra import detect_zebra, format_zebra
 
 
 def _eth_close_date_key(now_ny: datetime) -> str:
@@ -41,26 +42,52 @@ def run_daily_scan() -> None:
         interval=settings["yf_interval"],
         max_retries=settings["yf_max_retries"],
         retry_backoff_seconds=settings["yf_retry_backoff_seconds"],
+        twelve_data_api_key=settings["twelve_data_api_key"],
+        td_outputsize=settings["td_outputsize"],
+        td_max_retries=settings["td_max_retries"],
+        td_retry_backoff_seconds=settings["td_retry_backoff_seconds"],
+        td_base_url=settings["td_base_url"],
     )
 
-    # Inside day via generic pipeline (same ETH day candles)
+    # Inside day via generic pipeline on normalized daily OHLC per ticker
     day_hits, day_fail, day_det = detect_inside(
-        df, tickers, build=lambda raw, t: candles_day_eth(raw, t, settings["ny_timezone"])
+        df,
+        tickers,
+        build=lambda raw, t: raw.get(t),
     )
 
     # Rounded retest (bull + bear)
     rr_hits, rr_fail, rr_det = detect_rounded_retests(df, tickers)
 
-    # Inside week: only after weekly close (Friday >= 17:00 NY), once per week
+    # Zebra day: alert on the 6th bar setup using daily candles
+    zebra_day_hits, zebra_day_fail, zebra_day_det = detect_zebra(
+        df,
+        tickers,
+        build=lambda raw, t: raw.get(t),
+    )
+
+    # Weekly scans: only after weekly close (Friday >= 17:00 NY), once per week
     week_hits, week_fail, week_det = [], [], {}
+    zebra_week_hits, zebra_week_fail, zebra_week_det = [], [], {}
+
     friday_close = (now_ny.weekday() == 4) and (now_ny.time() >= dtime(hour=17, minute=0))
+
     ny_week_key = now_ny.strftime("%G-W%V")
+    week_num = int(now_ny.strftime("%V"))
+    week_year = int(now_ny.strftime("%G"))
+    week_title = f"Week {week_num} ({week_year}) Summary"
 
     if friday_close and state.get("last_sent_ny_week") != ny_week_key:
         week_hits, week_fail, week_det = detect_inside(
             df,
             tickers,
-            build=lambda raw, t: candles_week_from_day(raw, t, settings["ny_timezone"], min_days=3),
+            build=lambda raw, t: candles_week_from_day_direct(raw.get(t), min_days=3),
+        )
+
+        zebra_week_hits, zebra_week_fail, zebra_week_det = detect_zebra(
+            df,
+            tickers,
+            build=lambda raw, t: candles_week_from_day_direct(raw.get(t), min_days=3),
         )
 
     role_id = settings.get("discord_role_id", "").strip()
@@ -69,19 +96,29 @@ def run_daily_scan() -> None:
 
     lines = [
         role_tag,
-        f"# {ny_day_key} Summary",
+        f"# {ny_day_key} zInsider Summary",
         "",
-        "--------------",
-        "",
+        "─────────────────────────────────",
     ]
 
-    lines += format_inside("Inside day", day_hits, day_fail, day_det, prev_tag="PDH/PDL", curr_tag="DH/DL")
+    lines += format_inside(
+        "Inside day",
+        day_hits,
+        day_fail,
+        day_det,
+        prev_tag="PDH/PDL",
+        curr_tag="DH/DL",
+    )
 
     lines.append("")
-    lines.append("**Rounded retest**")
+    lines.append("────────────────")
+    lines.append("")
+    lines.append("## Rounded Retest")
+
     if rr_hits:
         for t in rr_hits:
             direction, d1, d2, d3, h1, l1, c2, lvl3 = rr_det[t]
+
             if direction == "bull":
                 lines.append(
                     f"- **Possible Rounded retest (bullish)** on `{t}`  \n"
@@ -99,12 +136,53 @@ def run_daily_scan() -> None:
     else:
         lines.append("- None")
 
+    lines.append("")
+    lines.append("────────────────")
+    lines.append("")
+    lines += format_zebra(
+        "Daily Zebra",
+        zebra_day_hits,
+        zebra_day_fail,
+        zebra_day_det,
+        timeframe_tag="Day",
+    )
+
     if friday_close:
         lines.append("")
-        lines += format_inside("Inside week", week_hits, week_fail, week_det, prev_tag="PWH/PWL", curr_tag="WH/WL")
+        lines.append("────────────────")
+        lines.append("")
+        lines.append(f"## {week_title}")
+        lines.append("")
+        lines += format_inside(
+            "Inside week",
+            week_hits,
+            week_fail,
+            week_det,
+            prev_tag="PWH/PWL",
+            curr_tag="WH/WL",
+        )
 
-    # optional: union failures
-    all_failures = sorted(set(day_fail + rr_fail + week_fail))
+        lines.append("")
+        lines.append("────────────────")
+        lines.append("")
+        lines += format_zebra(
+            "Weekly Zebra",
+            zebra_week_hits,
+            zebra_week_fail,
+            zebra_week_det,
+            timeframe_tag="Week",
+        )
+
+    all_failures = sorted(
+        set(
+            day_fail
+            + rr_fail
+            + zebra_day_fail
+            + (week_fail if friday_close else [])
+            + (zebra_week_fail if friday_close else [])
+        )
+    )
+
     if all_failures:
         lines += ["", "**Data unavailable:**"]
         for t in all_failures:
@@ -116,7 +194,9 @@ def run_daily_scan() -> None:
         settings["always_send_summary"]
         or bool(day_hits)
         or bool(rr_hits)
+        or bool(zebra_day_hits)
         or (friday_close and bool(week_hits))
+        or (friday_close and bool(zebra_week_hits))
     )
 
     if should_send:
@@ -131,6 +211,7 @@ def run_daily_scan() -> None:
     state["last_sent_ny_day"] = ny_day_key
     if friday_close:
         state["last_sent_ny_week"] = ny_week_key
+
     save_state(settings["state_dir"], state)
 
 

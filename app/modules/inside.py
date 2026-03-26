@@ -1,22 +1,73 @@
 from __future__ import annotations
 
-from typing import Callable, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 import pandas as pd
 
 InsideDetail = Tuple[str, str, float, float, float, float]
-# (prev_label, curr_label, prev_high, prev_low, curr_high, curr_low)
-
-CandleBuilder = Callable[[pd.DataFrame, str], pd.DataFrame]
-# (raw_df, ticker) -> candles_df with columns Open/High/Low/Close, index label strings
+# (prev_bar_date, curr_bar_date, prev_high, prev_low, curr_high, curr_low)
 
 
-def detect_inside(raw_df: pd.DataFrame, tickers: List[str], build: CandleBuilder):
+def _detect_inside_on_candles(candles: pd.DataFrame) -> Tuple[bool, InsideDetail | None]:
+    """
+    Detect an inside bar on the latest closed candle.
+
+    candles must be indexed by bar date/datetime and contain:
+      Open, High, Low, Close
+
+    Returns:
+      (is_inside, detail)
+    """
+    if candles is None or candles.empty or len(candles) < 2:
+        return False, None
+
+    df = candles.copy()
+    df = df[["Open", "High", "Low", "Close"]].dropna()
+    if len(df) < 2:
+        return False, None
+
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+
+    prev = df.iloc[-2]
+    curr = df.iloc[-1]
+
+    prev_bar_date = df.index[-2].strftime("%Y-%m-%d")
+    curr_bar_date = df.index[-1].strftime("%Y-%m-%d")
+
+    ph, pl = float(prev["High"]), float(prev["Low"])
+    ch, cl = float(curr["High"]), float(curr["Low"])
+
+    detail: InsideDetail = (prev_bar_date, curr_bar_date, ph, pl, ch, cl)
+    is_inside = (ch <= ph) and (cl >= pl)
+
+    return is_inside, detail
+
+
+def detect_inside(
+    raw_df,
+    tickers: List[str],
+    build,
+):
+    """
+    Generic inside-bar detector using an external candle builder.
+
+    build(raw_df, ticker) -> DataFrame indexed by closed bar date/string
+    with columns: Open, High, Low, Close
+
+    Returns:
+        hits: list[str]
+            Tickers with inside setup
+        failures: list[str]
+            Tickers where data was unavailable or invalid
+        details: dict[str, tuple[str, str, float, float, float, float]]
+            ticker -> (prev_bar_date, curr_bar_date, prev_high, prev_low, curr_high, curr_low)
+    """
     hits: List[str] = []
     failures: List[str] = []
     details: Dict[str, InsideDetail] = {}
 
-    if raw_df is None or raw_df.empty:
+    if raw_df is None:
         return hits, tickers[:], details
 
     for t in tickers:
@@ -26,19 +77,13 @@ def detect_inside(raw_df: pd.DataFrame, tickers: List[str], build: CandleBuilder
                 failures.append(t)
                 continue
 
-            candles = candles.dropna(subset=["High", "Low"]).sort_index()
-            prev = candles.iloc[-2]
-            curr = candles.iloc[-1]
+            is_inside, det = _detect_inside_on_candles(candles)
+            if det is None:
+                failures.append(t)
+                continue
 
-            prev_label = str(candles.index[-2])[:10]
-            curr_label = str(candles.index[-1])[:10]
-
-            ph, pl = float(prev["High"]), float(prev["Low"])
-            ch, cl = float(curr["High"]), float(curr["Low"])
-
-            details[t] = (prev_label, curr_label, ph, pl, ch, cl)
-
-            if (ch <= ph) and (cl >= pl):
+            details[t] = det
+            if is_inside:
                 hits.append(t)
 
         except Exception:
@@ -49,28 +94,23 @@ def detect_inside(raw_df: pd.DataFrame, tickers: List[str], build: CandleBuilder
 
 def format_inside(
     title: str,
-    hits: List[str],
-    failures: List[str],
-    details: Dict[str, InsideDetail],
+    hits,
+    failures,
+    details,
     prev_tag: str,
     curr_tag: str,
 ) -> List[str]:
-    lines: List[str] = [f"**{title}**"]
+    lines: List[str] = [f"## {title}"]
 
     if hits:
         for t in hits:
-            prev_date, curr_date, ph, pl, ch, cl = details[t]
+            prev_bar_date, curr_bar_date, ph, pl, ch, cl = details[t]
             lines.append(
-                f"- **Inside on `{t}`**  \n"
-                f"  `{prev_date}` {prev_tag}: `{ph:.5f}` / `{pl:.5f}`  \n"
-                f"  `{curr_date}` {curr_tag}: `{ch:.5f}` / `{cl:.5f}`"
+                f"- **Inside** on `{t}`  \n"
+                f"  {prev_tag} `{prev_bar_date}` → H/L `{ph:.5f}` / `{pl:.5f}`  \n"
+                f"  {curr_tag} `{curr_bar_date}` → H/L `{ch:.5f}` / `{cl:.5f}`"
             )
     else:
         lines.append("- None")
-
-    if failures:
-        lines += ["", f"**{title} data unavailable:**"]
-        for t in sorted(set(failures)):
-            lines.append(f"- `{t}`")
 
     return lines
