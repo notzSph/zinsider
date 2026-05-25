@@ -1,19 +1,174 @@
-# Python
-__pycache__/
-.venv/
+# ============================================================
+# zInsider .gitignore
+# Python / Docker / SQLite / Discord webhook service
+# ============================================================
 
-# Env
+
+# ------------------------------------------------------------
+# Environment / secrets
+# ------------------------------------------------------------
 .env
 .env.*
 !.env.example
+!.env.template
 
-# Logs and runtime artifacts
-*.log
-state/
+*.local
+*.local.*
 
-# Security
+# Discord / TradingView / API secrets
+*.secret
+*.secrets
+secrets/
+secret/
+credentials/
+credentials.*
+*.credentials
+
+# Keys / certificates
 *.pem
 *.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.asc
+*.gpg
 
-# Misc
+
+# ------------------------------------------------------------
+# Python bytecode / caches
+# ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.tox/
+.nox/
+.hypothesis/
+
+
+# ------------------------------------------------------------
+# Python virtual environments
+# ------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+
+
+# ------------------------------------------------------------
+# Python build / packaging output
+# ------------------------------------------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-wheel-metadata/
+
+
+# ------------------------------------------------------------
+# SQLite / local runtime database
+# ------------------------------------------------------------
+data/
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+
+
+# ------------------------------------------------------------
+# Logs / runtime state
+# ------------------------------------------------------------
+*.log
+logs/
+log/
+*.pid
+*.pid.lock
+
+
+# ------------------------------------------------------------
+# Docker / local compose overrides
+# ------------------------------------------------------------
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+
+# ------------------------------------------------------------
+# Coverage / reports
+# ------------------------------------------------------------
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+junit.xml
+
+
+# ------------------------------------------------------------
+# Temporary files
+# ------------------------------------------------------------
+tmp/
+temp/
+.cache/
+*.tmp
+*.temp
+*.bak
+*.backup
+
+
+# ------------------------------------------------------------
+# OS files
+# ------------------------------------------------------------
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+
+# ------------------------------------------------------------
+# Editor / IDE files
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+
+# ------------------------------------------------------------
+# Git conflict / patch artifacts
+# ------------------------------------------------------------
+*.orig
+*.rej
+*.patch
+
+
+# ------------------------------------------------------------
+# Archives / exports
+# ------------------------------------------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z

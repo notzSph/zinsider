@@ -1,179 +1,446 @@
-# zinsider
+# zInsider
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Build Status](https://img.shields.io/badge/build-passing-green)
-![Python](https://img.shields.io/badge/Python-3.12%2B-informational)
-![Docker](https://img.shields.io/badge/Docker-required-informational)
-![License: MIT](https://img.shields.io/badge/License-MIT--X-lightgrey)
+![Version](https://img.shields.io/badge/Version-2.0-blue.svg)
+![Build](https://img.shields.io/badge/Build-passing-brightgreen.svg)
+![License](https://img.shields.io/badge/License-Proprietary-red.svg)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)
+![Database](https://img.shields.io/badge/Database-SQLite-003B57.svg)
+![Container](https://img.shields.io/badge/Container-Docker-2496ED.svg)
+![Output](https://img.shields.io/badge/Output-Discord-5865F2.svg)
 
-Daily **inside day** scanner for **FX and futures** (Yahoo Finance via `yfinance`) that posts a single summary message to **Discord**.
+zInsider is a private market-structure scanner for FX and futures monitoring.
+
+Version 2.0+ separates data collection from publishing:
+
+- FX data comes from TradingView Pine alerts into `/webhooks/tradingview`.
+- Futures data is pulled with `yfinance`.
+- Computed bars and signals are stored in SQLite.
+- Discord output is routed to digest/model threads instead of one noisy wall of text.
+
+The system is designed for private workflow automation, market-structure scanning, setup detection, and clean Discord delivery.
+
+---
+
+## Version
+
+```text
+2.0
+```
+
+---
+
+## Status
+
+```text
+Build: Passing
+License: Proprietary
+Runtime: Python
+Database: SQLite
+Output: Discord webhooks
+```
+
+---
 
 ## Features
 
-- Runs unattended in Docker
-- Schedules on **America/New_York** time (DST-safe)
-- Posts a single daily summary message
-- Idempotent: avoids duplicate notifications across restarts
+- TradingView webhook ingestion for FX OHLC data.
+- Futures data collection through `yfinance`.
+- SQLite persistence for bars, computed state, and signals.
+- Inside day detection.
+- Inside week detection.
+- Rounded retest tracking.
+- Zebra model output.
+- Daily digest stream.
+- Discord thread routing by model/stream.
+- Optional Discord bot presence while webhook posting remains the main output path.
+- Dockerized deployment.
+- CLI commands for serving, scanning, initializing the database, and printing stats.
 
-## How it works
+---
 
-For each ticker in your universe, the job pulls the last two completed daily bars and flags an **inside day** when:
+## Repository Structure
 
-- `today_high <= yesterday_high` and `today_low >= yesterday_low`
+```text
+.
+├── Dockerfile
+├── LICENSE
+├── README.md
+├── app
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── main.py
+│   ├── modules
+│   │   ├── __init__.py
+│   │   ├── analyzer.py
+│   │   ├── assets.py
+│   │   ├── config.py
+│   │   ├── db.py
+│   │   ├── inside.py
+│   │   ├── market.py
+│   │   ├── render.py
+│   │   ├── retest.py
+│   │   ├── signals.py
+│   │   ├── state.py
+│   │   ├── webhooks.py
+│   │   └── zebra.py
+│   ├── presence.py
+│   ├── scheduler.py
+│   └── server.py
+├── docker-compose.yml
+└── requirements.txt
+```
 
-A single Discord message is sent with all tickers that triggered.
+Note: `__pycache__/` directories and `.pyc` files are runtime artifacts and should not be committed.
 
-## Requirements
+---
 
-- Docker Engine + Docker Compose (v2)
-- A Discord server/channel where you can create a webhook
-- (Optional) Python 3.12+ if running locally without Docker
+## Project Layout
 
-## Configuration
+### `app/`
 
-### 1) Create a Discord webhook
+Main Python package and application entrypoints.
 
-In your Discord server:
+| File | Purpose |
+| --- | --- |
+| `__main__.py` | Module entrypoint for `python3 -m app`. |
+| `main.py` | CLI command routing and application control. |
+| `presence.py` | Optional Discord bot presence handling. |
+| `scheduler.py` | Scheduled scan / task orchestration. |
+| `server.py` | Webhook server for TradingView ingestion. |
 
-Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL
+### `app/modules/`
 
-Treat the webhook URL as a secret (do not commit it).
+Core scanning, storage, signal, and publishing modules.
 
-### 2) Create your environment file
+| File | Purpose |
+| --- | --- |
+| `analyzer.py` | Market-structure analysis orchestration. |
+| `assets.py` | Asset definitions, aliases, and symbol handling. |
+| `config.py` | Environment and runtime configuration. |
+| `db.py` | SQLite database access and persistence. |
+| `inside.py` | Inside day / inside week logic. |
+| `market.py` | Market data fetching and normalization. |
+| `render.py` | Discord message rendering. |
+| `retest.py` | Rounded retest detection. |
+| `signals.py` | Signal construction and routing. |
+| `state.py` | Runtime state management. |
+| `webhooks.py` | Discord webhook delivery. |
+| `zebra.py` | Zebra model logic. |
+
+---
+
+## Discord Streams
+
+Configure one Discord webhook and optional thread IDs:
+
+```env
+DISCORD_WEBHOOK_URL=...
+DISCORD_DIGEST_THREAD_ID=
+DISCORD_ID_THREAD_ID=
+DISCORD_IW_THREAD_ID=
+DISCORD_RR_THREAD_ID=
+DISCORD_ZEBRA_THREAD_ID=
+```
+
+Streams:
+
+| Variable | Purpose |
+| --- | --- |
+| `DISCORD_DIGEST_THREAD_ID` | Compact daily summary. |
+| `DISCORD_ID_THREAD_ID` | Inside day logs. |
+| `DISCORD_IW_THREAD_ID` | Inside week logs. |
+| `DISCORD_RR_THREAD_ID` | Rounded retest logs. |
+| `DISCORD_ZEBRA_THREAD_ID` | Zebra logs. |
+
+If a thread ID is blank, that stream posts to the webhook's default channel/thread.
+
+---
+
+## Optional Discord Presence
+
+To keep the zInsider bot user online, set:
+
+```env
+DISCORD_BOT_TOKEN=...
+DISCORD_PRESENCE_ENABLED=true
+DISCORD_PRESENCE_STATUS=idle
+DISCORD_PRESENCE_ACTIVITY=Cooking Shit..
+```
+
+The webhook still handles posting.
+
+The bot token is only used for presence.
+
+---
+
+## FX Contract
+
+TradingView should POST JSON to:
+
+```text
+POST /webhooks/tradingview
+```
+
+Raw OHLC payload:
+
+```json
+{
+  "secret": "change-me",
+  "run_key": "2026-05-23",
+  "timeframe": "D",
+  "bars": {
+    "EU": [
+      ["2026-05-21", 1.1310, 1.1360, 1.1280, 1.1340],
+      ["2026-05-22", 1.1340, 1.1350, 1.1300, 1.1325]
+    ],
+    "GU": [
+      ["2026-05-21", 1.3500, 1.3560, 1.3480, 1.3530],
+      ["2026-05-22", 1.3530, 1.3540, 1.3500, 1.3515]
+    ]
+  }
+}
+```
+
+Send at least 12 daily bars per FX symbol.
+
+Two bars are enough for inside day checks, but rounded retest, Zebra, and weekly checks need more history.
+
+zInsider stores these bars, computes the signals on the VPS, then routes digest/model streams to Discord.
+
+---
+
+## Supported FX Aliases
+
+```text
+EU   -> EURUSD=X
+GU   -> GBPUSD=X
+EG   -> EURGBP=X
+AU   -> AUDUSD=X
+NU   -> NZDUSD=X
+UCHF -> USDCHF=X
+UCAD -> USDCAD=X
+UJ   -> USDJPY=X
+EJ   -> EURJPY=X
+GJ   -> GBPJPY=X
+```
+
+---
+
+## Alternate FX Payload Format
+
+TradingView can also send list rows:
+
+```json
+{
+  "secret": "change-me",
+  "run_key": "2026-05-23",
+  "bars": [
+    {
+      "ticker": "EU",
+      "timeframe": "D",
+      "date": "2026-05-22",
+      "open": 1.134,
+      "high": 1.135,
+      "low": 1.13,
+      "close": 1.1325
+    }
+  ]
+}
+```
+
+---
+
+## Commands
+
+Run the webhook server:
+
+```bash
+python3 -m app serve
+```
+
+Run the futures scanner once:
+
+```bash
+python3 -m app scan --force
+```
+
+Initialize SQLite:
+
+```bash
+python3 -m app init-db
+```
+
+Print basic stats:
+
+```bash
+python3 -m app stats --limit 20
+```
+
+---
+
+## Docker
+
+Create and edit the environment file:
 
 ```bash
 cp .env.example .env
+vim .env
 ```
 
-Edit `.env` and set:
-
-- `DISCORD_WEBHOOK_URL=...`
-
-Common options:
-
-- `ALWAYS_SEND_SUMMARY=true` (send even if no signals)
-- `DRY_RUN=true` (log output instead of posting to Discord)
-
-## 3) Edit your asset universe
-
-Update the ticker list in:
-
-- `app/modules/assets.py`
-
-Examples:
-
-- FX: `EURUSD=X`, `USDJPY=X`
-- Futures: `ES=F`, `NQ=F`, `CL=F`, `GC=F`
-
-## Deploy with Docker
-
-### Quick start (build + run)
-
-From the repo root:
+Build and run:
 
 ```bash
-docker compose build
-docker compose up -d
-docker compose logs -f
+docker compose up -d --build
 ```
 
-## One-off run (manual)
-
-Trigger a scan immediately:
+Follow logs:
 
 ```bash
-docker compose run --rm zinsider
+docker compose logs -f zinsider
 ```
 
-If your container runs the scheduler by default and you want a one-shot run:
+Run a one-off futures scan:
 
 ```bash
-docker compose run --rm zinsider
+docker compose run --rm zinsider scan --force
 ```
 
-## Scheduling
-
-You have two supported ways to schedule; use one (not both).
-
-### Option A: Container scheduler (APScheduler)
-
-Use this if you want scheduling to live entirely inside Docker.
-
-Set in `.env`:
-
-- `NY_TIMEZONE=America/New_York`
-- `SCHEDULE_DOW=mon-fri`
-- `SCHEDULE_HOUR=17`
-- `SCHEDULE_MINUTE=18`
-
-Then run:
+Stop the stack:
 
 ```bash
-docker compose up -d
+docker compose down
 ```
 
-To confirm scheduling:
+---
+
+## Local Run
+
+Create a virtual environment:
 
 ```bash
-docker compose logs -f
+python3 -m venv .venv
+. .venv/bin/activate
 ```
 
-
-You should see a log line indicating the schedule and timezone.
-
-### Option B: Host cron (lowest overhead)
-
-Use this if you prefer the most resource-efficient approach (container starts, runs once, exits).
-
-1) Ensure your compose service runs the one-shot job by default (entrypoint `app.main`).
-2) Add a cron entry on the host:
+Install dependencies:
 
 ```bash
-crontab -e
+pip install -r requirements.txt
 ```
 
-Add:
+Initialize the database:
 
 ```bash
-TZ=America/New_York
-18 17 * * 1-5 cd /opt/zinsider && docker compose run --rm zinsider >> /opt/zinsider/run.log 2>&1
+python3 -m app init-db
 ```
-Notes:
 
-- `TZ=America/New_York` makes it DST-safe.
-- Adjust `/opt/zinsider` to your actual deployment directory.
-
-## Operations
-
-### View logs
+Run the webhook server:
 
 ```bash
-docker compose logs -f
+python3 -m app serve
 ```
 
-### Restart
+Run a scanner pass:
 
 ```bash
-docker compose restart
+python3 -m app scan --force
 ```
 
-### Update / Redeploy
+---
+
+## Environment
+
+Common environment values include:
+
+```env
+TV_WEBHOOK_SECRET=change-me
+DB_PATH=data/zinsider.db
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_DIGEST_THREAD_ID=
+DISCORD_ID_THREAD_ID=
+DISCORD_IW_THREAD_ID=
+DISCORD_RR_THREAD_ID=
+DISCORD_ZEBRA_THREAD_ID=
+DISCORD_BOT_TOKEN=
+DISCORD_PRESENCE_ENABLED=false
+DISCORD_PRESENCE_STATUS=idle
+DISCORD_PRESENCE_ACTIVITY=Cooking Shit..
+```
+
+Keep `.env` out of Git.
+
+---
+
+## Deployment Notes
+
+- Put the service behind nginx or Caddy with HTTPS before pointing TradingView at it.
+- Set `TV_WEBHOOK_SECRET` and include it in the Pine alert payload.
+- Keep `.env` out of Git.
+- Keep Discord webhook URLs and bot tokens private.
+- SQLite lives at `DB_PATH`.
+- Docker maps SQLite persistence to the `data` volume by default.
+- Remove committed `__pycache__/` directories and `.pyc` files from Git history/index.
+
+---
+
+## Data Persistence
+
+zInsider uses SQLite for local persistence.
+
+Typical local path:
+
+```text
+data/zinsider.db
+```
+
+The SQLite database is runtime state and should not be committed.
+
+---
+
+## Security
+
+Do not commit:
+
+- `.env`
+- Discord webhook URLs
+- Discord bot tokens
+- TradingView webhook secrets
+- SQLite database files
+- Docker volume data
+- runtime logs
+- local deployment overrides
+- VPS credentials
+- API keys
+
+Before committing, check:
 
 ```bash
-git pull
-docker compose build --no-cache
-docker compose up -d
+git status
+git diff --staged
 ```
 
-### State / idempotency
-
-The app writes a small state file (e.g., `state/state.json` or a mounted Docker volume) to ensure it does not post twice for the same New York session date.
-
-## Security notes
-
-- The Discord webhook URL is the credential. Store it in `.env` and keep it out of Git.
-- If the webhook URL is ever exposed, delete/regenerate it in Discord.
+---
 
 ## License
 
-MIT (see `LICENSE`).
+```text
+Proprietary
+```
+
+See:
+
+```text
+LICENSE
+```
+
+All rights reserved.
+
+Unauthorized copying, redistribution, modification, publication, or commercial use is not permitted.
+
+---
+
+## Maintainer
+
+```text
+zSPH
+```
