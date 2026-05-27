@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import requests
 
+DISCORD_API_BASE = "https://discord.com/api/v10"
+
 
 def _split_for_discord(message: str, limit: int = 1900):
     """
@@ -38,7 +40,8 @@ def _split_for_discord(message: str, limit: int = 1900):
 
 def send_discord_message(
     message: str,
-    webhook_url: str,
+    bot_token: str,
+    channel_id: str,
     dry_run: bool = False,
     role_id: str = "",
     allow_role_ping: bool = False,
@@ -46,8 +49,10 @@ def send_discord_message(
     if dry_run:
         print(message)
         return
-    if not webhook_url:
-        raise RuntimeError("DISCORD_WEBHOOK_URL is not set")
+    if not bot_token:
+        raise RuntimeError("DISCORD_BOT_TOKEN is not set")
+    if not channel_id:
+        raise RuntimeError("Discord channel ID is not set")
 
     message = (message or "").strip()
     if not message:
@@ -60,10 +65,16 @@ def send_discord_message(
 
     def post(content: str) -> None:
         payload = {"content": content, "allowed_mentions": allowed_mentions}
-        r = requests.post(webhook_url, json=payload, timeout=15)
+        headers = {"Authorization": f"Bot {bot_token}"}
+        r = requests.post(
+            f"{DISCORD_API_BASE}/channels/{channel_id}/messages",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
         if r.status_code >= 400:
             raise RuntimeError(
-                f"Discord webhook failed {r.status_code}: {r.text}\n"
+                f"Discord bot message failed {r.status_code}: {r.text}\n"
                 f"len(content)={len(content)}"
             )
         r.raise_for_status()

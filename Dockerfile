@@ -7,4 +7,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ /app/app/
 
-CMD ["python", "-m", "app.main"]
+ENTRYPOINT ["python", "-m", "app"]
+CMD ["serve"]

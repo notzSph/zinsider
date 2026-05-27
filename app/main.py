@@ -3,15 +3,14 @@ from __future__ import annotations
 from datetime import datetime, time as dtime, timedelta
 from zoneinfo import ZoneInfo
 
-from app.modules.assets import get_assets
+from app.modules.analyzer import analyze_daily_map
+from app.modules.assets import get_futures
 from app.modules.config import get_settings
-from app.modules.inside import detect_inside, format_inside
+from app.modules.db import connect, finish_run, start_run, store_bars, store_signals
 from app.modules.market import download_bars
-from app.modules.retest import detect_rounded_retests
-from app.modules.signals import candles_week_from_day_direct
+from app.modules.render import STREAM_THREADS, render_digest, render_stream
 from app.modules.state import get_state, save_state
 from app.modules.webhooks import send_discord_message
-from app.modules.zebra import detect_zebra, format_zebra
 
 
 def _eth_close_date_key(now_ny: datetime) -> str:
@@ -21,199 +20,100 @@ def _eth_close_date_key(now_ny: datetime) -> str:
     return now_ny.strftime("%Y-%m-%d")
 
 
-def run_daily_scan() -> None:
+def _post_outputs(settings: dict, title: str, signals: list[dict], failures: list[str], source: str) -> None:
+    role_id = settings.get("discord_role_id", "").strip()
+    ping_enabled = settings.get("discord_ping_role", False)
+
+    if settings["always_send_summary"] or signals or failures:
+        send_discord_message(
+            render_digest(title, signals, failures),
+            settings["discord_bot_token"],
+            settings.get(STREAM_THREADS["digest"], ""),
+            dry_run=settings["dry_run"],
+            role_id=role_id,
+            allow_role_ping=ping_enabled,
+        )
+
+    for model in ("ID", "IW", "+RR", "Zebra"):
+        content = render_stream(model, signals, source=source)
+        if not content:
+            continue
+        send_discord_message(
+            content,
+            settings["discord_bot_token"],
+            settings.get(STREAM_THREADS[model], ""),
+            dry_run=settings["dry_run"],
+            role_id=role_id,
+            allow_role_ping=False,
+        )
+
+
+def run_futures_scan(force: bool = False) -> dict:
     settings = get_settings()
-    tickers = get_assets()
+    tickers = get_futures(settings)
 
     if not tickers:
-        raise RuntimeError("Asset universe is empty. Update app/modules/assets.py")
+        raise RuntimeError("Futures universe is empty. Set FUTURES_TICKERS or update app/modules/assets.py")
 
     ny_tz = ZoneInfo(settings["ny_timezone"])
     now_ny = datetime.now(ny_tz)
     ny_day_key = _eth_close_date_key(now_ny)
 
     state = get_state(settings["state_dir"])
-    if state.get("last_sent_ny_day") == ny_day_key:
-        return
+    if not force and state.get("last_sent_futures_ny_day") == ny_day_key:
+        return {"status": "skipped", "run_key": ny_day_key}
 
-    df = download_bars(
+    df_map = download_bars(
         tickers=tickers,
         period=settings["yf_period"],
         interval=settings["yf_interval"],
         max_retries=settings["yf_max_retries"],
         retry_backoff_seconds=settings["yf_retry_backoff_seconds"],
-        twelve_data_api_key=settings["twelve_data_api_key"],
+        twelve_data_api_key="",
         td_outputsize=settings["td_outputsize"],
         td_max_retries=settings["td_max_retries"],
         td_retry_backoff_seconds=settings["td_retry_backoff_seconds"],
         td_base_url=settings["td_base_url"],
     )
 
-    # Inside day via generic pipeline on normalized daily OHLC per ticker
-    day_hits, day_fail, day_det = detect_inside(
-        df,
-        tickers,
-        build=lambda raw, t: raw.get(t),
-    )
+    signals, failures = analyze_daily_map(df_map, tickers)
 
-    # Rounded retest (bull + bear)
-    rr_hits, rr_fail, rr_det = detect_rounded_retests(df, tickers)
-
-    # Zebra day: alert on the 6th bar setup using daily candles
-    zebra_day_hits, zebra_day_fail, zebra_day_det = detect_zebra(
-        df,
-        tickers,
-        build=lambda raw, t: raw.get(t),
-    )
-
-    # Weekly scans: only after weekly close (Friday >= 17:00 NY), once per week
-    week_hits, week_fail, week_det = [], [], {}
-    zebra_week_hits, zebra_week_fail, zebra_week_det = [], [], {}
-
-    friday_close = (now_ny.weekday() == 4) and (now_ny.time() >= dtime(hour=17, minute=0))
-
-    ny_week_key = now_ny.strftime("%G-W%V")
-    week_num = int(now_ny.strftime("%V"))
-    week_year = int(now_ny.strftime("%G"))
-    week_title = f"Week {week_num} ({week_year}) Summary"
-
-    if friday_close and state.get("last_sent_ny_week") != ny_week_key:
-        week_hits, week_fail, week_det = detect_inside(
-            df,
-            tickers,
-            build=lambda raw, t: candles_week_from_day_direct(raw.get(t), min_days=3),
+    with connect(settings["db_path"]) as conn:
+        run_id = start_run(conn, "yfinance", ny_day_key, {"tickers": tickers})
+        bars_written = 0
+        for ticker, candles in df_map.items():
+            bars_written += store_bars(conn, "yfinance", ticker, "D", candles)
+        signals_written = store_signals(conn, run_id, "yfinance", signals)
+        finish_run(
+            conn,
+            run_id,
+            "ok",
+            {"bars": bars_written, "signals": signals_written, "failures": failures},
         )
 
-        zebra_week_hits, zebra_week_fail, zebra_week_det = detect_zebra(
-            df,
-            tickers,
-            build=lambda raw, t: candles_week_from_day_direct(raw.get(t), min_days=3),
-        )
-
-    role_id = settings.get("discord_role_id", "").strip()
-    ping_enabled = settings.get("discord_ping_role", False)
-    role_tag = f"<@&{role_id}>" if role_id else "Role tag"
-
-    lines = [
-        role_tag,
-        f"# {ny_day_key} zInsider Summary",
-        "",
-        "─────────────────────────────────",
-    ]
-
-    lines += format_inside(
-        "Inside day",
-        day_hits,
-        day_fail,
-        day_det,
-        prev_tag="PDH/PDL",
-        curr_tag="DH/DL",
+    _post_outputs(
+        settings,
+        f"**{ny_day_key} zInsider Futures**",
+        signals,
+        failures,
+        source="yfinance",
     )
 
-    lines.append("")
-    lines.append("────────────────")
-    lines.append("")
-    lines.append("## Rounded Retest")
-
-    if rr_hits:
-        for t in rr_hits:
-            direction, d1, d2, d3, h1, l1, c2, lvl3 = rr_det[t]
-
-            if direction == "bull":
-                lines.append(
-                    f"- **Possible Rounded retest (bullish)** on `{t}`  \n"
-                    f"  D1 hammer `{d1}` (H/L `{h1:.5f}/{l1:.5f}`)  \n"
-                    f"  D2 `{d2}` close `{c2:.5f}` > D1 high  \n"
-                    f"  D3 `{d3}` low `{lvl3:.5f}` > D1 high"
-                )
-            else:
-                lines.append(
-                    f"- **Possible Rounded retest (bearish)** on `{t}`  \n"
-                    f"  D1 shooting star `{d1}` (H/L `{h1:.5f}/{l1:.5f}`)  \n"
-                    f"  D2 `{d2}` close `{c2:.5f}` < D1 low  \n"
-                    f"  D3 `{d3}` high `{lvl3:.5f}` < D1 low"
-                )
-    else:
-        lines.append("- None")
-
-    lines.append("")
-    lines.append("────────────────")
-    lines.append("")
-    lines += format_zebra(
-        "Daily Zebra",
-        zebra_day_hits,
-        zebra_day_fail,
-        zebra_day_det,
-        timeframe_tag="Day",
-    )
-
-    if friday_close:
-        lines.append("")
-        lines.append("────────────────")
-        lines.append("")
-        lines.append(f"## {week_title}")
-        lines.append("")
-        lines += format_inside(
-            "Inside week",
-            week_hits,
-            week_fail,
-            week_det,
-            prev_tag="PWH/PWL",
-            curr_tag="WH/WL",
-        )
-
-        lines.append("")
-        lines.append("────────────────")
-        lines.append("")
-        lines += format_zebra(
-            "Weekly Zebra",
-            zebra_week_hits,
-            zebra_week_fail,
-            zebra_week_det,
-            timeframe_tag="Week",
-        )
-
-    all_failures = sorted(
-        set(
-            day_fail
-            + rr_fail
-            + zebra_day_fail
-            + (week_fail if friday_close else [])
-            + (zebra_week_fail if friday_close else [])
-        )
-    )
-
-    if all_failures:
-        lines += ["", "**Data unavailable:**"]
-        for t in all_failures:
-            lines.append(f"- `{t}`")
-
-    message = "\n".join(lines)
-
-    should_send = (
-        settings["always_send_summary"]
-        or bool(day_hits)
-        or bool(rr_hits)
-        or bool(zebra_day_hits)
-        or (friday_close and bool(week_hits))
-        or (friday_close and bool(zebra_week_hits))
-    )
-
-    if should_send:
-        send_discord_message(
-            message,
-            settings["discord_webhook_url"],
-            dry_run=settings["dry_run"],
-            role_id=role_id,
-            allow_role_ping=ping_enabled,
-        )
-
-    state["last_sent_ny_day"] = ny_day_key
-    if friday_close:
-        state["last_sent_ny_week"] = ny_week_key
-
+    state["last_sent_futures_ny_day"] = ny_day_key
     save_state(settings["state_dir"], state)
+
+    return {
+        "status": "ok",
+        "run_key": ny_day_key,
+        "tickers": len(tickers),
+        "signals": len(signals),
+        "failures": len(failures),
+    }
+
+
+def run_daily_scan() -> None:
+    run_futures_scan()
 
 
 if __name__ == "__main__":
-    run_daily_scan()
+    print(run_futures_scan(force=True))

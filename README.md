@@ -36,7 +36,7 @@ Build: Passing
 License: Proprietary
 Runtime: Python
 Database: SQLite
-Output: Discord webhooks
+Output: Discord bot
 ```
 
 ---
@@ -52,7 +52,7 @@ Output: Discord webhooks
 - Zebra model output.
 - Daily digest stream.
 - Discord thread routing by model/stream.
-- Optional Discord bot presence while webhook posting remains the main output path.
+- Discord bot delivery and optional presence.
 - Dockerized deployment.
 - CLI commands for serving, scanning, initializing the database, and printing stats.
 
@@ -124,17 +124,17 @@ Core scanning, storage, signal, and publishing modules.
 | `retest.py` | Rounded retest detection. |
 | `signals.py` | Signal construction and routing. |
 | `state.py` | Runtime state management. |
-| `webhooks.py` | Discord webhook delivery. |
+| `webhooks.py` | Discord bot message delivery. |
 | `zebra.py` | Zebra model logic. |
 
 ---
 
 ## Discord Streams
 
-Configure one Discord webhook and optional thread IDs:
+Configure the Discord bot token and output thread IDs:
 
 ```env
-DISCORD_WEBHOOK_URL=...
+DISCORD_BOT_TOKEN=...
 DISCORD_DIGEST_THREAD_ID=
 DISCORD_ID_THREAD_ID=
 DISCORD_IW_THREAD_ID=
@@ -152,7 +152,7 @@ Streams:
 | `DISCORD_RR_THREAD_ID` | Rounded retest logs. |
 | `DISCORD_ZEBRA_THREAD_ID` | Zebra logs. |
 
-If a thread ID is blank, that stream posts to the webhook's default channel/thread.
+Every stream requires a thread ID when `DRY_RUN=false`. The bot sends directly to each thread ID.
 
 ---
 
@@ -163,13 +163,11 @@ To keep the zInsider bot user online, set:
 ```env
 DISCORD_BOT_TOKEN=...
 DISCORD_PRESENCE_ENABLED=true
-DISCORD_PRESENCE_STATUS=idle
-DISCORD_PRESENCE_ACTIVITY=Cooking Shit..
+DISCORD_PRESENCE_STATUS=online
+DISCORD_PRESENCE_ACTIVITY=zInsider
 ```
 
-The webhook still handles posting.
-
-The bot token is only used for presence.
+The same bot token is used for message delivery and optional presence.
 
 ---
 
@@ -355,16 +353,15 @@ Common environment values include:
 ```env
 TV_WEBHOOK_SECRET=change-me
 DB_PATH=data/zinsider.db
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+DISCORD_BOT_TOKEN=
 DISCORD_DIGEST_THREAD_ID=
 DISCORD_ID_THREAD_ID=
 DISCORD_IW_THREAD_ID=
 DISCORD_RR_THREAD_ID=
 DISCORD_ZEBRA_THREAD_ID=
-DISCORD_BOT_TOKEN=
 DISCORD_PRESENCE_ENABLED=false
-DISCORD_PRESENCE_STATUS=idle
-DISCORD_PRESENCE_ACTIVITY=Cooking Shit..
+DISCORD_PRESENCE_STATUS=online
+DISCORD_PRESENCE_ACTIVITY=zInsider
 ```
 
 Keep `.env` out of Git.
@@ -376,7 +373,7 @@ Keep `.env` out of Git.
 - Put the service behind nginx or Caddy with HTTPS before pointing TradingView at it.
 - Set `TV_WEBHOOK_SECRET` and include it in the Pine alert payload.
 - Keep `.env` out of Git.
-- Keep Discord webhook URLs and bot tokens private.
+- Keep Discord bot tokens private.
 - SQLite lives at `DB_PATH`.
 - Docker maps SQLite persistence to the `data` volume by default.
 - Remove committed `__pycache__/` directories and `.pyc` files from Git history/index.
@@ -402,7 +399,6 @@ The SQLite database is runtime state and should not be committed.
 Do not commit:
 
 - `.env`
-- Discord webhook URLs
 - Discord bot tokens
 - TradingView webhook secrets
 - SQLite database files

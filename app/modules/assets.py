@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 
-ASSETS = [
-    "EURUSD=X",
-    "GBPUSD=X",
-    "AUDUSD=X",
-    "USDCHF=X",
-    "USDJPY=X",
-    "USDCAD=X",
-    "EURGBP=X",
-    "NZDUSD=X",
+FX_ALIASES = {
+    "EU": "EURUSD=X",
+    "GU": "GBPUSD=X",
+    "EG": "EURGBP=X",
+    "AU": "AUDUSD=X",
+    "NU": "NZDUSD=X",
+    "UCHF": "USDCHF=X",
+    "UCAD": "USDCAD=X",
+    "UJ": "USDJPY=X",
+    "EJ": "EURJPY=X",
+    "GJ": "GBPJPY=X",
+}
+
+DEFAULT_FUTURES = [
     "ES=F",
     "NQ=F",
     "YM=F",
@@ -28,9 +33,28 @@ ASSETS = [
 
 def get_assets() -> list[str]:
     """
-    Return the list of Yahoo-style tickers to monitor.
+    Return the complete default universe.
     """
-    return ASSETS
+    return list(FX_ALIASES.values()) + DEFAULT_FUTURES[:]
+
+
+def get_futures(settings: dict | None = None) -> list[str]:
+    if settings and settings.get("futures_tickers"):
+        return list(settings["futures_tickers"])
+    return DEFAULT_FUTURES[:]
+
+
+def normalize_ticker(ticker: str) -> str:
+    t = ticker.strip().upper()
+    if not t:
+        return t
+    if ":" in t:
+        t = t.rsplit(":", 1)[-1]
+    if t in FX_ALIASES:
+        return FX_ALIASES[t]
+    if len(t) == 6 and t.isalpha():
+        return f"{t}=X"
+    return t
 
 
 def is_fx_ticker(ticker: str) -> bool:

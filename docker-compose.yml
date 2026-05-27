@@ -10,9 +10,14 @@ services:
       TD_RETRY_BACKOFF_SECONDS: ${TD_RETRY_BACKOFF_SECONDS:-2.0}
       TD_BASE_URL: ${TD_BASE_URL:-https://api.twelvedata.com}
       STATE_DIR: /app/state
+      DB_PATH: /app/data/zinsider.sqlite3
+    ports:
+      - "127.0.0.1:${ZINSIDER_PORT:-8080}:8080"
     volumes:
       - state:/app/state
-    restart: "no"
+      - data:/app/data
+    restart: unless-stopped
 
 volumes:
   state:
+  data:
