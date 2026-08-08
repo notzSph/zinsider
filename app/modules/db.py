@@ -140,6 +140,9 @@ def store_bars(conn: sqlite3.Connection, provider: str, ticker: str, timeframe: 
 
 
 def store_signals(conn: sqlite3.Connection, run_id: int, source: str, signals: Iterable[dict]) -> int:
+    # A rerun reuses the same (source, run_key) row. Clear its old snapshot
+    # first so resolved setups cannot bleed into a new digest.
+    conn.execute("DELETE FROM signals WHERE run_id=?", (run_id,))
     now = utc_now()
     count = 0
     for sig in signals:

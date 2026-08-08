@@ -18,6 +18,19 @@ services:
       - data:/app/data
     restart: unless-stopped
 
+  scheduler:
+    image: zinsider:latest
+    env_file:
+      - .env
+    environment:
+      STATE_DIR: /app/state
+      DB_PATH: /app/data/zinsider.sqlite3
+    command: ["scheduler"]
+    volumes:
+      - state:/app/state
+      - data:/app/data
+    restart: unless-stopped
+
 volumes:
   state:
   data:

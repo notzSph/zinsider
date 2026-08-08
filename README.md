@@ -50,6 +50,7 @@ Output: Discord bot
 - Inside week detection.
 - Rounded retest tracking.
 - Zebra model output.
+- Futures rollover alerts.
 - Daily digest stream.
 - Discord thread routing by model/stream.
 - Discord bot delivery and optional presence.
@@ -135,24 +136,115 @@ Configure the Discord bot token and output thread IDs:
 
 ```env
 DISCORD_BOT_TOKEN=...
-DISCORD_DIGEST_THREAD_ID=
+DISCORD_DAILY_DIGEST_THREAD_ID=
+DISCORD_WEEKLY_DIGEST_THREAD_ID=
 DISCORD_ID_THREAD_ID=
 DISCORD_IW_THREAD_ID=
-DISCORD_RR_THREAD_ID=
-DISCORD_ZEBRA_THREAD_ID=
+DISCORD_DAILY_RR_PLUS_THREAD_ID=
+DISCORD_DAILY_RR_MINUS_THREAD_ID=
+DISCORD_WEEKLY_RR_PLUS_THREAD_ID=
+DISCORD_WEEKLY_RR_MINUS_THREAD_ID=
+DISCORD_DAILY_ZEBRA_THREAD_ID=
+DISCORD_WEEKLY_ZEBRA_THREAD_ID=
+DISCORD_ROLLOVER_THREAD_ID=
 ```
 
 Streams:
 
 | Variable | Purpose |
 | --- | --- |
-| `DISCORD_DIGEST_THREAD_ID` | Compact daily summary. |
+| `DISCORD_DAILY_DIGEST_THREAD_ID` | Compact weekday summary. |
+| `DISCORD_WEEKLY_DIGEST_THREAD_ID` | Friday weekly summary. |
 | `DISCORD_ID_THREAD_ID` | Inside day logs. |
 | `DISCORD_IW_THREAD_ID` | Inside week logs. |
-| `DISCORD_RR_THREAD_ID` | Rounded retest logs. |
-| `DISCORD_ZEBRA_THREAD_ID` | Zebra logs. |
+| `DISCORD_DAILY_RR_PLUS_THREAD_ID` | Daily bullish rounded retest logs. |
+| `DISCORD_DAILY_RR_MINUS_THREAD_ID` | Daily bearish rounded retest logs. |
+| `DISCORD_WEEKLY_RR_PLUS_THREAD_ID` | Friday bullish weekly rounded retest logs. |
+| `DISCORD_WEEKLY_RR_MINUS_THREAD_ID` | Friday bearish weekly rounded retest logs. |
+| `DISCORD_DAILY_ZEBRA_THREAD_ID` | Daily Zebra logs. |
+| `DISCORD_WEEKLY_ZEBRA_THREAD_ID` | Friday weekly Zebra logs. |
+| `DISCORD_ROLLOVER_THREAD_ID` | Futures rollover alerts. |
 
 Every stream requires a thread ID when `DRY_RUN=false`. The bot sends directly to each thread ID.
+
+---
+
+## Futures Rollovers
+
+Rollover alerts are calendar-driven. Add the official expiring contract date, and zInsider computes:
+
+- rollover date: Monday of the expiration week
+- early alert: Sunday eight days before rollover Monday
+- final alert: Friday immediately before rollover Monday
+- alert time: `ROLLOVER_ALERT_HOUR:ROLLOVER_ALERT_MINUTE` in `NY_TIMEZONE`
+
+Standard setup:
+
+```env
+DISCORD_ROLLOVER_THREAD_ID=...
+ROLLOVER_ENABLED=true
+ROLLOVER_ALERT_HOUR=18
+ROLLOVER_ALERT_MINUTE=0
+ROLLOVER_CALENDAR_PATH=config/rollovers.json
+ROLLOVER_CONTRACTS=
+```
+
+Calendar format:
+
+```json
+{
+  "products": [
+    {
+      "symbol": "ES",
+      "contracts": [
+        {
+          "contract": "ESM2026",
+          "expiration_date": "2026-06-19"
+        },
+        {
+          "contract": "ESU2026",
+          "expiration_date": "2026-09-18"
+        },
+        {
+          "contract": "ESZ2026",
+          "expiration_date": "2026-12-18"
+        }
+      ]
+    }
+  ]
+}
+```
+
+For each product, list contracts in order with their official expiration dates. zInsider derives adjacent rollover pairs automatically, for example `ESM2026 -> ESU2026`, then `ESU2026 -> ESZ2026`.
+
+The product object also accepts `product_name`, `exchange`, `asset_class`, `contract_url`, `notes`, and a free-form `metadata` object. Individual contracts can override `contract_url`, `notes`, or add metadata. Keep official exchange calendars as the source of truth; do not infer expiry dates.
+
+The tracked live calendar is at `config/rollovers.json`; update it only from official exchange calendars. `examples/rollovers.example.json` is the small starter template.
+
+This sends:
+
+```text
+ES Futures Rollover — Early heads-up
+Roll: ESM2026 → ESU2026
+Rollover Monday: 2026-06-15
+Expiration: 2026-06-19
+```
+
+`ROLLOVER_CONTRACTS` is still available for quick one-off tests:
+
+```env
+ROLLOVER_CONTRACTS=ESM2026:2026-06-19:ESU2026
+```
+
+Run a rollover check manually with:
+
+```bash
+python3 -m app rollovers
+```
+
+Use `--force` to print/send configured rollover alerts regardless of the alert date and previous-send state.
+
+The `scheduler` compose service runs the weekday futures scan and the Sunday/Friday rollover checks independently. This matters because the early Sunday alert cannot be produced by a Monday–Friday scanner.
 
 ---
 
@@ -207,20 +299,14 @@ zInsider stores these bars, computes the signals on the VPS, then routes digest/
 
 ---
 
-## Supported FX Aliases
+## Supported FX Tickers
 
 ```text
-EU   -> EURUSD=X
-GU   -> GBPUSD=X
-EG   -> EURGBP=X
-AU   -> AUDUSD=X
-NU   -> NZDUSD=X
-UCHF -> USDCHF=X
-UCAD -> USDCAD=X
-UJ   -> USDJPY=X
-EJ   -> EURJPY=X
-GJ   -> GBPJPY=X
+EU, GU, EG, AU, NZD, CHF, CAD, UJ, EJ, GJ
 ```
+
+These are supplied, stored and rendered as plain TradingView/zInsider tickers.
+No Yahoo Finance or Twelve Data FX aliases are supported.
 
 ---
 
@@ -357,7 +443,8 @@ DISCORD_BOT_TOKEN=
 DISCORD_DIGEST_THREAD_ID=
 DISCORD_ID_THREAD_ID=
 DISCORD_IW_THREAD_ID=
-DISCORD_RR_THREAD_ID=
+DISCORD_RR_PLUS_THREAD_ID=
+DISCORD_RR_MINUS_THREAD_ID=
 DISCORD_ZEBRA_THREAD_ID=
 DISCORD_PRESENCE_ENABLED=false
 DISCORD_PRESENCE_STATUS=online

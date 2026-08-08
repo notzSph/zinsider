@@ -1,0 +1,58 @@
+{
+  "products": [
+    {
+      "symbol": "ES",
+      "product_name": "E-mini S&P 500",
+      "exchange": "CME Globex",
+      "asset_class": "Equity index futures",
+      "contract_url": "https://www.cmegroup.com/markets/equities/sp/e-mini-sandp500.contractSpecs.html",
+      "notes": "Use the exchange calendar as the source of truth for expiry changes.",
+      "metadata": {
+        "root_symbol": "ES",
+        "currency": "USD",
+        "contract_size": "$50 x index",
+        "minimum_tick": "0.25 points"
+      },
+      "contracts": [
+        {
+          "contract": "ESM2026",
+          "expiration_date": "2026-06-19"
+        },
+        {
+          "contract": "ESU2026",
+          "expiration_date": "2026-09-18"
+        },
+        {
+          "contract": "ESZ2026",
+          "expiration_date": "2026-12-18"
+        }
+      ]
+    },
+    {
+      "symbol": "6E",
+      "product_name": "Euro FX",
+      "exchange": "CME Globex",
+      "asset_class": "FX futures",
+      "metadata": {
+        "root_symbol": "6E",
+        "currency": "USD",
+        "contract_size": "EUR 125,000",
+        "minimum_tick": "0.00005"
+      },
+      "contracts": [
+        {
+          "contract": "6EM2026",
+          "expiration_date": "2026-06-15"
+        },
+        {
+          "contract": "6EU2026",
+          "expiration_date": "2026-09-14"
+        },
+        {
+          "contract": "6EZ2026",
+          "expiration_date": "2026-12-14"
+        }
+      ]
+    }
+  ]
+}

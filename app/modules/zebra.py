@@ -4,8 +4,8 @@ from typing import Dict, List, Tuple
 
 import pandas as pd
 
-ZebraDetail = Tuple[str, str]
-# (curr_bar_date, pattern_matched)
+ZebraDetail = Tuple[str, str, float, float, float]
+# (curr_bar_date, pattern_matched, last_high, last_low, last_close)
 # pattern_matched is one of:
 # - "Up/Down/Up/Down/Up/Down"   -> bearish setup
 # - "Down/Up/Down/Up/Down/Up"   -> bullish setup
@@ -74,11 +74,23 @@ def _detect_zebra_on_candles(candles: pd.DataFrame) -> Tuple[str | None, ZebraDe
 
     if dirs == ["Up", "Down", "Up", "Down", "Up", "Down"]:
         curr_bar_date = last6.index[-1].strftime("%Y-%m-%d")
-        return "bearish", (curr_bar_date, "Up/Down/Up/Down/Up/Down")
+        return "bearish", (
+            curr_bar_date,
+            "Up/Down/Up/Down/Up/Down",
+            float(last6.iloc[-1]["High"]),
+            float(last6.iloc[-1]["Low"]),
+            float(last6.iloc[-1]["Close"]),
+        )
 
     if dirs == ["Down", "Up", "Down", "Up", "Down", "Up"]:
         curr_bar_date = last6.index[-1].strftime("%Y-%m-%d")
-        return "bullish", (curr_bar_date, "Down/Up/Down/Up/Down/Up")
+        return "bullish", (
+            curr_bar_date,
+            "Down/Up/Down/Up/Down/Up",
+            float(last6.iloc[-1]["High"]),
+            float(last6.iloc[-1]["Low"]),
+            float(last6.iloc[-1]["Close"]),
+        )
 
     return None, None
 
@@ -99,8 +111,8 @@ def detect_zebra(
             Tickers with Zebra setup
         failures: list[str]
             Tickers where data was unavailable or invalid
-        details: dict[str, tuple[str, str, str]]
-            ticker -> (direction, curr_bar_date, matched_pattern)
+        details: dict[str, tuple[str, str, str, float, float]]
+            ticker -> (direction, curr_bar_date, matched_pattern, last_high, last_low)
     """
     hits: List[str] = []
     failures: List[str] = []
@@ -120,9 +132,9 @@ def detect_zebra(
             if direction is None or det is None:
                 continue
 
-            curr_bar_date, matched_pattern = det
+            curr_bar_date, matched_pattern, last_high, last_low, last_close = det
             hits.append(t)
-            details[t] = (direction, curr_bar_date, matched_pattern)
+            details[t] = (direction, curr_bar_date, matched_pattern, last_high, last_low, last_close)
 
         except Exception:
             failures.append(t)
@@ -135,12 +147,15 @@ def format_zebra(title: str, hits, failures, details, timeframe_tag: str) -> Lis
 
     if hits:
         for t in hits:
-            direction, curr_bar_date, matched_pattern = details[t]
+            direction, curr_bar_date, matched_pattern, last_high, last_low, last_close = details[t]
             expected = "Down" if direction == "bearish" else "Up"
+            level = last_high if direction == "bullish" else last_low
+            label = "Last Day High" if direction == "bullish" else "Last Day Low"
             lines.append(
                 f"- **Zebra setup ({direction})** on `{t}`  \n"
                 f"  {timeframe_tag} `{curr_bar_date}`  \n"
-                f"  Pattern `{matched_pattern}`  \n"
+                f"  {label} `{level:.5f}`  \n"
+                f"  Price `{last_close:.5f}`  \n"
                 f"  Watching next {timeframe_tag.lower()} close for `{expected}` continuation"
             )
     else:

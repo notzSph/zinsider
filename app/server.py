@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 from flask import Flask, jsonify, request
@@ -9,8 +10,20 @@ from flask import Flask, jsonify, request
 from app.modules.analyzer import analyze_daily_map
 from app.modules.assets import normalize_ticker
 from app.modules.config import get_settings
-from app.modules.db import connect, finish_run, start_run, store_bars, store_signals
-from app.modules.render import render_digest, render_stream, STREAM_THREADS
+from app.modules.db import (
+    connect,
+    finish_run,
+    start_run,
+    store_bars,
+    store_signals,
+)
+from app.modules.render import (
+    DAILY_MODEL_ORDER,
+    WEEKLY_MODEL_ORDER,
+    STREAM_THREADS,
+    render_digest,
+    render_stream,
+)
 from app.modules.webhooks import send_discord_message
 
 
@@ -69,20 +82,30 @@ def _rows_from_payload(payload: dict[str, Any]) -> list[dict]:
     return rows
 
 
-def _post(settings: dict, title: str, signals: list[dict], failures: list[str], source: str) -> None:
+def _post(
+    settings: dict,
+    digest_signals: list[dict],
+    stream_signals: list[dict],
+    failures: list[str],
+    source: str,
+    include_weekly: bool,
+) -> None:
     role_id = settings.get("discord_role_id", "").strip()
+    labelled_digest_signals = [{**signal, "source": source} for signal in digest_signals]
+    daily_signals = [signal for signal in labelled_digest_signals if signal["model"] in DAILY_MODEL_ORDER]
+    weekly_signals = [signal for signal in labelled_digest_signals if signal["model"] in WEEKLY_MODEL_ORDER]
 
     send_discord_message(
-        render_digest(title, signals, failures),
+        render_digest("**zInsider Daily Market Digest**", daily_signals, failures, DAILY_MODEL_ORDER),
         settings["discord_bot_token"],
-        settings.get(STREAM_THREADS["digest"], ""),
+        settings.get(STREAM_THREADS["daily_digest"], ""),
         dry_run=settings["dry_run"],
         role_id=role_id,
         allow_role_ping=settings.get("discord_ping_role", False),
     )
 
-    for model in ("ID", "IW", "+RR", "Zebra"):
-        content = render_stream(model, signals, source=source)
+    for model in DAILY_MODEL_ORDER:
+        content = render_stream(model, stream_signals, source=source)
         if not content:
             continue
         send_discord_message(
@@ -91,6 +114,26 @@ def _post(settings: dict, title: str, signals: list[dict], failures: list[str], 
             settings.get(STREAM_THREADS[model], ""),
             dry_run=settings["dry_run"],
         )
+
+    if include_weekly:
+        send_discord_message(
+            render_digest("**zInsider Weekly Market Digest**", weekly_signals, [], WEEKLY_MODEL_ORDER),
+            settings["discord_bot_token"],
+            settings.get(STREAM_THREADS["weekly_digest"], ""),
+            dry_run=settings["dry_run"],
+            role_id=role_id,
+            allow_role_ping=settings.get("discord_ping_role", False),
+        )
+        for model in WEEKLY_MODEL_ORDER:
+            content = render_stream(model, stream_signals, source=source)
+            if not content:
+                continue
+            send_discord_message(
+                content,
+                settings["discord_bot_token"],
+                settings.get(STREAM_THREADS[model], ""),
+                dry_run=settings["dry_run"],
+            )
 
 
 def create_app() -> Flask:
@@ -145,7 +188,13 @@ def create_app() -> Flask:
                     daily_map[ticker] = candles
                     tickers.append(ticker)
 
-            signals, failures = analyze_daily_map(daily_map, sorted(set(tickers)))
+            now_ny = datetime.now(ZoneInfo(settings["ny_timezone"]))
+            include_weekly = now_ny.weekday() == 4
+            signals, failures = analyze_daily_map(
+                daily_map,
+                sorted(set(tickers)),
+                include_weekly=include_weekly,
+            )
             signals_written = store_signals(conn, run_id, "tradingview", signals)
             finish_run(
                 conn,
@@ -153,13 +202,13 @@ def create_app() -> Flask:
                 "ok",
                 {"bars": bars_written, "signals": signals_written, "failures": failures},
             )
-
         _post(
             settings,
-            f"**{run_key} zInsider FX**",
+            signals,
             signals,
             failures,
             source="tradingview",
+            include_weekly=include_weekly,
         )
 
         return jsonify(

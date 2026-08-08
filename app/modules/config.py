@@ -12,11 +12,25 @@ def get_settings() -> dict:
     Load runtime configuration from environment variables.
     """
     return {
-        "discord_digest_thread_id": os.getenv("DISCORD_DIGEST_THREAD_ID", "").strip(),
+        "discord_daily_digest_thread_id": os.getenv(
+            "DISCORD_DAILY_DIGEST_THREAD_ID", os.getenv("DISCORD_DIGEST_THREAD_ID", "")
+        ).strip(),
+        "discord_weekly_digest_thread_id": os.getenv("DISCORD_WEEKLY_DIGEST_THREAD_ID", "").strip(),
         "discord_id_thread_id": os.getenv("DISCORD_ID_THREAD_ID", "").strip(),
         "discord_iw_thread_id": os.getenv("DISCORD_IW_THREAD_ID", "").strip(),
-        "discord_rr_thread_id": os.getenv("DISCORD_RR_THREAD_ID", "").strip(),
-        "discord_zebra_thread_id": os.getenv("DISCORD_ZEBRA_THREAD_ID", "").strip(),
+        "discord_daily_rr_plus_thread_id": os.getenv(
+            "DISCORD_DAILY_RR_PLUS_THREAD_ID", os.getenv("DISCORD_RR_PLUS_THREAD_ID", "")
+        ).strip(),
+        "discord_daily_rr_minus_thread_id": os.getenv(
+            "DISCORD_DAILY_RR_MINUS_THREAD_ID", os.getenv("DISCORD_RR_MINUS_THREAD_ID", "")
+        ).strip(),
+        "discord_weekly_rr_plus_thread_id": os.getenv("DISCORD_WEEKLY_RR_PLUS_THREAD_ID", "").strip(),
+        "discord_weekly_rr_minus_thread_id": os.getenv("DISCORD_WEEKLY_RR_MINUS_THREAD_ID", "").strip(),
+        "discord_daily_zebra_thread_id": os.getenv(
+            "DISCORD_DAILY_ZEBRA_THREAD_ID", os.getenv("DISCORD_ZEBRA_THREAD_ID", "")
+        ).strip(),
+        "discord_weekly_zebra_thread_id": os.getenv("DISCORD_WEEKLY_ZEBRA_THREAD_ID", "").strip(),
+        "discord_rollover_thread_id": os.getenv("DISCORD_ROLLOVER_THREAD_ID", "").strip(),
         "discord_role_id": os.getenv("DISCORD_ROLE_ID", "").strip(),
         "discord_ping_role": os.getenv("DISCORD_PING_ROLE", "false").strip().lower() in ("1", "true", "yes", "y"),
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN", "").strip(),
@@ -39,17 +53,16 @@ def get_settings() -> dict:
         "yf_max_retries": int(os.getenv("YF_MAX_RETRIES", "3")),
         "yf_retry_backoff_seconds": float(os.getenv("YF_RETRY_BACKOFF_SECONDS", "2.0")),
 
-        # Twelve Data legacy fallback (kept optional; TV webhook is primary for FX)
-        "twelve_data_api_key": os.getenv("TWELVE_DATA_API_KEY", "").strip(),
-        "td_outputsize": int(os.getenv("TD_OUTPUTSIZE", "20")),
-        "td_max_retries": int(os.getenv("TD_MAX_RETRIES", "3")),
-        "td_retry_backoff_seconds": float(os.getenv("TD_RETRY_BACKOFF_SECONDS", "2.0")),
-        "td_base_url": os.getenv("TD_BASE_URL", "https://api.twelvedata.com").strip(),
-
         "schedule_dow": os.getenv("SCHEDULE_DOW", "mon-fri"),
         "schedule_hour": int(os.getenv("SCHEDULE_HOUR", "17")),
         "schedule_minute": int(os.getenv("SCHEDULE_MINUTE", "18")),
         "run_on_start": os.getenv("RUN_ON_START", "false").strip().lower() in ("1", "true", "yes", "y"),
 
         "futures_tickers": _csv(os.getenv("FUTURES_TICKERS", "")),
+
+        "rollover_enabled": os.getenv("ROLLOVER_ENABLED", "true").strip().lower() in ("1", "true", "yes", "y"),
+        "rollover_alert_hour": int(os.getenv("ROLLOVER_ALERT_HOUR", "18")),
+        "rollover_alert_minute": int(os.getenv("ROLLOVER_ALERT_MINUTE", "0")),
+        "rollover_contracts": _csv(os.getenv("ROLLOVER_CONTRACTS", "")),
+        "rollover_calendar_path": os.getenv("ROLLOVER_CALENDAR_PATH", "config/rollovers.json").strip(),
     }
