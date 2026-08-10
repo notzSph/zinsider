@@ -17,6 +17,9 @@ services:
       - state:/app/state
       - data:/app/data
     restart: unless-stopped
+    networks:
+      - default
+      - jayzoo
 
   scheduler:
     image: zinsider:latest
@@ -30,7 +33,15 @@ services:
       - state:/app/state
       - data:/app/data
     restart: unless-stopped
+    networks:
+      - default
+      - jayzoo
 
 volumes:
   state:
   data:
+
+networks:
+  jayzoo:
+    external: true
+    name: jayzoo_default

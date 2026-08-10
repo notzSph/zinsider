@@ -12,24 +12,18 @@ def get_settings() -> dict:
     Load runtime configuration from environment variables.
     """
     return {
-        "discord_daily_digest_thread_id": os.getenv(
-            "DISCORD_DAILY_DIGEST_THREAD_ID", os.getenv("DISCORD_DIGEST_THREAD_ID", "")
-        ).strip(),
+        "discord_daily_digest_thread_id": os.getenv("DISCORD_DAILY_DIGEST_THREAD_ID", "").strip(),
         "discord_weekly_digest_thread_id": os.getenv("DISCORD_WEEKLY_DIGEST_THREAD_ID", "").strip(),
         "discord_id_thread_id": os.getenv("DISCORD_ID_THREAD_ID", "").strip(),
         "discord_iw_thread_id": os.getenv("DISCORD_IW_THREAD_ID", "").strip(),
-        "discord_daily_rr_plus_thread_id": os.getenv(
-            "DISCORD_DAILY_RR_PLUS_THREAD_ID", os.getenv("DISCORD_RR_PLUS_THREAD_ID", "")
-        ).strip(),
-        "discord_daily_rr_minus_thread_id": os.getenv(
-            "DISCORD_DAILY_RR_MINUS_THREAD_ID", os.getenv("DISCORD_RR_MINUS_THREAD_ID", "")
-        ).strip(),
+        "discord_daily_rr_plus_thread_id": os.getenv("DISCORD_DAILY_RR_PLUS_THREAD_ID", "").strip(),
+        "discord_daily_rr_minus_thread_id": os.getenv("DISCORD_DAILY_RR_MINUS_THREAD_ID", "").strip(),
         "discord_weekly_rr_plus_thread_id": os.getenv("DISCORD_WEEKLY_RR_PLUS_THREAD_ID", "").strip(),
         "discord_weekly_rr_minus_thread_id": os.getenv("DISCORD_WEEKLY_RR_MINUS_THREAD_ID", "").strip(),
-        "discord_daily_zebra_thread_id": os.getenv(
-            "DISCORD_DAILY_ZEBRA_THREAD_ID", os.getenv("DISCORD_ZEBRA_THREAD_ID", "")
-        ).strip(),
-        "discord_weekly_zebra_thread_id": os.getenv("DISCORD_WEEKLY_ZEBRA_THREAD_ID", "").strip(),
+        "discord_daily_bullish_zebra_thread_id": os.getenv("DISCORD_DAILY_BULLISH_ZEBRA_THREAD_ID", "").strip(),
+        "discord_daily_bearish_zebra_thread_id": os.getenv("DISCORD_DAILY_BEARISH_ZEBRA_THREAD_ID", "").strip(),
+        "discord_weekly_bullish_zebra_thread_id": os.getenv("DISCORD_WEEKLY_BULLISH_ZEBRA_THREAD_ID", "").strip(),
+        "discord_weekly_bearish_zebra_thread_id": os.getenv("DISCORD_WEEKLY_BEARISH_ZEBRA_THREAD_ID", "").strip(),
         "discord_rollover_thread_id": os.getenv("DISCORD_ROLLOVER_THREAD_ID", "").strip(),
         "discord_role_id": os.getenv("DISCORD_ROLE_ID", "").strip(),
         "discord_ping_role": os.getenv("DISCORD_PING_ROLE", "false").strip().lower() in ("1", "true", "yes", "y"),
@@ -46,6 +40,9 @@ def get_settings() -> dict:
         "ny_timezone": os.getenv("NY_TIMEZONE", "America/New_York"),
 
         "tv_webhook_secret": os.getenv("TV_WEBHOOK_SECRET", "").strip(),
+        "platform_api_url": os.getenv("PLATFORM_API_URL", "").strip().rstrip("/"),
+        "platform_ingest_token": os.getenv("PLATFORM_INGEST_TOKEN", "").strip(),
+        "platform_digest_enabled": os.getenv("PLATFORM_DIGEST_ENABLED", "false").strip().lower() in ("1", "true", "yes", "y"),
 
         # Yahoo Finance (non-FX: futures, etc.)
         "yf_period": os.getenv("YF_PERIOD", "12d"),

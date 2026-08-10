@@ -14,6 +14,7 @@ from app.modules.db import (
     store_signals,
 )
 from app.modules.market import download_bars
+from app.modules.platform import digest_payload, send_digest
 from app.modules.render import (
     DAILY_MODEL_ORDER,
     WEEKLY_MODEL_ORDER,
@@ -139,6 +140,31 @@ def run_futures_scan(force: bool = False) -> dict:
         source="yfinance",
         include_weekly=include_weekly,
     )
+    daily_signals = [signal for signal in signals if signal["model"] in DAILY_MODEL_ORDER]
+    send_digest(
+        settings,
+        digest_payload(
+            "daily",
+            ny_day_key,
+            render_digest("zInsider Daily Market Digest", daily_signals, failures, DAILY_MODEL_ORDER),
+            daily_signals,
+            failures,
+            bars_written,
+        ),
+    )
+    if include_weekly:
+        weekly_signals = [signal for signal in signals if signal["model"] in WEEKLY_MODEL_ORDER]
+        send_digest(
+            settings,
+            digest_payload(
+                "weekly",
+                ny_day_key,
+                render_digest("zInsider Weekly Market Digest", weekly_signals, [], WEEKLY_MODEL_ORDER),
+                weekly_signals,
+                [],
+                bars_written,
+            ),
+        )
 
     state["last_sent_futures_ny_day"] = ny_day_key
     save_state(settings["state_dir"], state)

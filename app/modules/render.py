@@ -13,10 +13,10 @@ STREAM_THREADS = {
     "-RR": "discord_daily_rr_minus_thread_id",
     "+RR Weekly": "discord_weekly_rr_plus_thread_id",
     "-RR Weekly": "discord_weekly_rr_minus_thread_id",
-    "Bullish Zebra": "discord_daily_zebra_thread_id",
-    "Bearish Zebra": "discord_daily_zebra_thread_id",
-    "Bullish Weekly Zebra": "discord_weekly_zebra_thread_id",
-    "Bearish Weekly Zebra": "discord_weekly_zebra_thread_id",
+    "Bullish Zebra": "discord_daily_bullish_zebra_thread_id",
+    "Bearish Zebra": "discord_daily_bearish_zebra_thread_id",
+    "Bullish Weekly Zebra": "discord_weekly_bullish_zebra_thread_id",
+    "Bearish Weekly Zebra": "discord_weekly_bearish_zebra_thread_id",
 }
 
 DAILY_MODEL_ORDER = ("ID", "+RR", "-RR", "Bullish Zebra", "Bearish Zebra")
