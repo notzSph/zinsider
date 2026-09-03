@@ -30,7 +30,7 @@ def get_settings() -> dict:
         "discord_bot_token": os.getenv("DISCORD_BOT_TOKEN", "").strip(),
         "discord_presence_enabled": os.getenv("DISCORD_PRESENCE_ENABLED", "true").strip().lower() in ("1", "true", "yes", "y"),
         "discord_presence_status": os.getenv("DISCORD_PRESENCE_STATUS", "idle").strip().lower(),
-        "discord_presence_activity": os.getenv("DISCORD_PRESENCE_ACTIVITY", "Cooking Shit..").strip(),
+        "discord_presence_activity": os.getenv("DISCORD_PRESENCE_ACTIVITY", "zInsider").strip(),
 
         "always_send_summary": os.getenv("ALWAYS_SEND_SUMMARY", "true").strip().lower() in ("1", "true", "yes", "y"),
         "dry_run": os.getenv("DRY_RUN", "false").strip().lower() in ("1", "true", "yes", "y"),

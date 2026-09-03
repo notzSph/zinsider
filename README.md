@@ -2,13 +2,13 @@
 
 ![Version](https://img.shields.io/badge/Version-2.0-blue.svg)
 ![Build](https://img.shields.io/badge/Build-passing-brightgreen.svg)
-![License](https://img.shields.io/badge/License-Proprietary-red.svg)
+![License](https://img.shields.io/badge/License-MIT-blue.svg)
 ![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)
 ![Database](https://img.shields.io/badge/Database-SQLite-003B57.svg)
 ![Container](https://img.shields.io/badge/Container-Docker-2496ED.svg)
 ![Output](https://img.shields.io/badge/Output-Discord-5865F2.svg)
 
-zInsider is a private market-structure scanner for FX and futures monitoring.
+zInsider is an open-source market-structure scanner for FX and futures monitoring.
 
 Version 2.0+ separates data collection from publishing:
 
@@ -17,7 +17,7 @@ Version 2.0+ separates data collection from publishing:
 - Computed bars and signals are stored in SQLite.
 - Discord output is routed to digest/model threads instead of one noisy wall of text.
 
-The system is designed for private workflow automation, market-structure scanning, setup detection, and clean Discord delivery.
+The system is designed for workflow automation, market-structure scanning, setup detection, and clean Discord delivery.
 
 ---
 
@@ -33,7 +33,7 @@ The system is designed for private workflow automation, market-structure scannin
 
 ```text
 Build: Passing
-License: Proprietary
+License: MIT
 Runtime: Python
 Database: SQLite
 Output: Discord bot
@@ -63,9 +63,11 @@ Output: Discord bot
 
 ```text
 .
-├── Dockerfile
+├── .dockerignore
 ├── LICENSE
 ├── README.md
+├── SECURITY.md
+├── CONTRIBUTING.md
 ├── app
 │   ├── __init__.py
 │   ├── __main__.py
@@ -87,8 +89,13 @@ Output: Discord bot
 │   ├── presence.py
 │   ├── scheduler.py
 │   └── server.py
-├── docker-compose.yml
-└── requirements.txt
+├── infra
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   └── .env.example
+├── examples
+├── requirements.txt
+└── tests
 ```
 
 Note: `__pycache__/` directories and `.pyc` files are runtime artifacts and should not be committed.
@@ -144,8 +151,10 @@ DISCORD_DAILY_RR_PLUS_THREAD_ID=
 DISCORD_DAILY_RR_MINUS_THREAD_ID=
 DISCORD_WEEKLY_RR_PLUS_THREAD_ID=
 DISCORD_WEEKLY_RR_MINUS_THREAD_ID=
-DISCORD_DAILY_ZEBRA_THREAD_ID=
-DISCORD_WEEKLY_ZEBRA_THREAD_ID=
+DISCORD_DAILY_BULLISH_ZEBRA_THREAD_ID=
+DISCORD_DAILY_BEARISH_ZEBRA_THREAD_ID=
+DISCORD_WEEKLY_BULLISH_ZEBRA_THREAD_ID=
+DISCORD_WEEKLY_BEARISH_ZEBRA_THREAD_ID=
 DISCORD_ROLLOVER_THREAD_ID=
 ```
 
@@ -161,8 +170,10 @@ Streams:
 | `DISCORD_DAILY_RR_MINUS_THREAD_ID` | Daily bearish rounded retest logs. |
 | `DISCORD_WEEKLY_RR_PLUS_THREAD_ID` | Friday bullish weekly rounded retest logs. |
 | `DISCORD_WEEKLY_RR_MINUS_THREAD_ID` | Friday bearish weekly rounded retest logs. |
-| `DISCORD_DAILY_ZEBRA_THREAD_ID` | Daily Zebra logs. |
-| `DISCORD_WEEKLY_ZEBRA_THREAD_ID` | Friday weekly Zebra logs. |
+| `DISCORD_DAILY_BULLISH_ZEBRA_THREAD_ID` | Daily bullish Zebra logs. |
+| `DISCORD_DAILY_BEARISH_ZEBRA_THREAD_ID` | Daily bearish Zebra logs. |
+| `DISCORD_WEEKLY_BULLISH_ZEBRA_THREAD_ID` | Friday weekly bullish Zebra logs. |
+| `DISCORD_WEEKLY_BEARISH_ZEBRA_THREAD_ID` | Friday weekly bearish Zebra logs. |
 | `DISCORD_ROLLOVER_THREAD_ID` | Futures rollover alerts. |
 
 Every stream requires a thread ID when `DRY_RUN=false`. The bot sends directly to each thread ID.
@@ -367,32 +378,32 @@ python3 -m app stats --limit 20
 Create and edit the environment file:
 
 ```bash
-cp .env.example .env
-vim .env
+cp infra/.env.example infra/.env
+vim infra/.env
 ```
 
 Build and run:
 
 ```bash
-docker compose up -d --build
+docker compose --env-file infra/.env -f infra/docker-compose.yml up -d --build
 ```
 
 Follow logs:
 
 ```bash
-docker compose logs -f zinsider
+docker compose --env-file infra/.env -f infra/docker-compose.yml logs -f zinsider
 ```
 
 Run a one-off futures scan:
 
 ```bash
-docker compose run --rm zinsider scan --force
+docker compose --env-file infra/.env -f infra/docker-compose.yml run --rm zinsider scan --force
 ```
 
 Stop the stack:
 
 ```bash
-docker compose down
+docker compose --env-file infra/.env -f infra/docker-compose.yml down
 ```
 
 ---
@@ -434,24 +445,7 @@ python3 -m app scan --force
 
 ## Environment
 
-Common environment values include:
-
-```env
-TV_WEBHOOK_SECRET=change-me
-DB_PATH=data/zinsider.db
-DISCORD_BOT_TOKEN=
-DISCORD_DIGEST_THREAD_ID=
-DISCORD_ID_THREAD_ID=
-DISCORD_IW_THREAD_ID=
-DISCORD_RR_PLUS_THREAD_ID=
-DISCORD_RR_MINUS_THREAD_ID=
-DISCORD_ZEBRA_THREAD_ID=
-DISCORD_PRESENCE_ENABLED=false
-DISCORD_PRESENCE_STATUS=online
-DISCORD_PRESENCE_ACTIVITY=zInsider
-```
-
-Keep `.env` out of Git.
+Copy `infra/.env.example` to `infra/.env` and fill in the deployment-specific values. The example file is the canonical list of supported settings. Keep `infra/.env` out of Git and protect it with restrictive file permissions.
 
 ---
 
@@ -459,7 +453,7 @@ Keep `.env` out of Git.
 
 - Put the service behind nginx or Caddy with HTTPS before pointing TradingView at it.
 - Set `TV_WEBHOOK_SECRET` and include it in the Pine alert payload.
-- Keep `.env` out of Git.
+- Keep `infra/.env` out of Git.
 - Keep Discord bot tokens private.
 - SQLite lives at `DB_PATH`.
 - Docker maps SQLite persistence to the `data` volume by default.
@@ -506,19 +500,7 @@ git diff --staged
 
 ## License
 
-```text
-Proprietary
-```
-
-See:
-
-```text
-LICENSE
-```
-
-All rights reserved.
-
-Unauthorized copying, redistribution, modification, publication, or commercial use is not permitted.
+zInsider is licensed under the MIT License. See [LICENSE](LICENSE).
 
 ---
 
