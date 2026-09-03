@@ -17,9 +17,8 @@ services:
       - state:/app/state
       - data:/app/data
     restart: unless-stopped
-    networks:
-      - default
-      - jayzoo
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   scheduler:
     image: zinsider:latest
@@ -33,15 +32,9 @@ services:
       - state:/app/state
       - data:/app/data
     restart: unless-stopped
-    networks:
-      - default
-      - jayzoo
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   state:
   data:
-
-networks:
-  jayzoo:
-    external: true
-    name: jayzoo_default

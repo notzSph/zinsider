@@ -38,10 +38,18 @@ class RenderStreamTests(unittest.TestCase):
         self.assertIn("📈 Model: Inside Week Failure", rendered)
         self.assertIn("🔑 Key Levels: PWH `100.000000` / PWL `90.000000`", rendered)
 
-    def test_new_agricultural_ticker_gets_its_live_emoji(self) -> None:
-        rendered = render_stream("ID", [_inside("ID", "ZC=F")], source="test")
+    def test_new_futures_tickers_get_their_live_emojis(self) -> None:
+        cases = {
+            "HG=F": "<:hg:1535238536855556196> HG",
+            "HO=F": "<:ho:1541470211973185636> HO",
+            "PL=F": "<:pl:1541470215139762237> PL",
+            "PA=F": "<:pa:1541470213583671408> PA",
+        }
 
-        self.assertIn("<:zc:1535238587497451540> ZC", rendered)
+        for ticker, expected in cases.items():
+            with self.subTest(ticker=ticker):
+                rendered = render_stream("ID", [_inside("ID", ticker)], source="test")
+                self.assertIn(expected, rendered)
 
     def test_emoji_map_only_uses_canonical_tickers(self) -> None:
         self.assertFalse(any("=" in ticker or "." in ticker for ticker in TICKER_EMOJIS))
