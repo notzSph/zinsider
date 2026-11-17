@@ -1,5 +1,7 @@
 services:
   zinsider:
+    networks:
+      - ztrading
     build:
       context: ..
       dockerfile: infra/Dockerfile
@@ -14,13 +16,23 @@ services:
       STATE_DIR: /app/state
       DB_PATH: /app/data/zinsider.sqlite3
     ports:
-      - "127.0.0.1:${ZINSIDER_PORT:-8080}:8080"
+      - "127.0.0.1:${ZINSIDER_PORT:?Set ZINSIDER_PORT}:8100"
     volumes:
       - state:/app/state
       - data:/app/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request
+
+          urllib.request.urlopen(
+              "http://127.0.0.1:8100/healthz",
+              timeout=3,
+          )
       interval: 30s
       timeout: 5s
       retries: 3
@@ -29,6 +41,8 @@ services:
       - "host.docker.internal:host-gateway"
 
   scheduler:
+    networks:
+      - ztrading
     image: zinsider:latest
     env_file:
       - .env
@@ -46,3 +60,8 @@ services:
 volumes:
   state:
   data:
+
+networks:
+  ztrading:
+    external: true
+    name: jayzoo_default

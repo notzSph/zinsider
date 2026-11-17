@@ -5,6 +5,8 @@ import argparse
 from app.modules.config import get_settings
 from app.modules.db import connect, init_db, recent_signal_counts
 
+SERVER_PORT = 8100
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="zinsider")
@@ -47,9 +49,9 @@ def main() -> None:
         try:
             from waitress import serve
         except ImportError:
-            app.run(host="0.0.0.0", port=8080)
+            app.run(host="0.0.0.0", port=SERVER_PORT)
         else:
-            serve(app, host="0.0.0.0", port=8080)
+            serve(app, host="0.0.0.0", port=SERVER_PORT)
         return
 
     if args.cmd == "scheduler":

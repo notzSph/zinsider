@@ -8,5 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ /app/app/
 COPY config/ /app/config/
 
+EXPOSE 8100
+
 ENTRYPOINT ["python", "-m", "app"]
 CMD ["serve"]
