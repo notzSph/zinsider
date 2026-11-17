@@ -394,6 +394,22 @@ Follow logs:
 docker compose --env-file infra/.env -f infra/docker-compose.yml logs -f zinsider
 ```
 
+### zTrading digest delivery
+
+zInsider and zTrading run on the same Docker host. The zInsider Compose
+services join zTrading's external `jayzoo_default` network and send digests to
+`ztrading-api`. Set these values in `infra/.env`. The token must belong to a
+zTrading agent credential with the `insider:write` scope.
+
+```dotenv
+PLATFORM_DIGEST_ENABLED=true
+PLATFORM_API_URL=http://ztrading-api:8000
+PLATFORM_INGEST_TOKEN=<ztrading-agent-token>
+```
+
+Keep the ingest token private. Recreate the zInsider scheduler after changing
+these settings so it loads the updated environment.
+
 Run a one-off futures scan:
 
 ```bash
